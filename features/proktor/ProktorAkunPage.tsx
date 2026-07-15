@@ -3,20 +3,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/features/auth/AuthProvider';
-import {
-  getStore, createSiswa, updateSiswa, deleteSiswa,
-  createGuru, updateGuru, deleteGuru,
-  resetPassword,
-} from '@/lib/store';
-import type { Siswa, Guru, User, Kelas, MataPelajaran } from '@/types';
+import type { Siswa, Guru, Kelas, User } from '@/types';
+import CustomSelect from '@/components/CustomSelect';
 import ProktorSidebar from './ProktorSidebar';
+import AppTopbar from '@/components/AppTopbar';
+import Toast, { type ToastData } from '@/components/Toast';
 
 type Tab  = 'siswa' | 'guru';
 type Mode = 'list' | 'tambah' | 'edit' | 'import';
 type SortKey = 'kelas' | 'nama' | 'username';
 
 export default function ProktorAkunPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [tab, setTab]   = useState<Tab>('siswa');
@@ -39,125 +37,207 @@ export default function ProktorAkunPage() {
   const [guruList,  setGuruList]  = useState<Guru[]>([]);
   const [userMap,   setUserMap]   = useState<Record<string, User>>({});
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
-  const [mapelList, setMapelList] = useState<MataPelajaran[]>([]);
 
   // Forms
-  const [siswForm, setSiswForm] = useState({ nis: '', nama: '', id_kelas: '', username: '', password: '' });
-  const [guruForm, setGuruForm] = useState({ nip: '', nama: '', mapel_ids: [] as string[], username: '', password: '' });
+  const [siswForm, setSiswForm] = useState({ nama: '', id_kelas: '', username: '', password: '' });
+  const [guruForm, setGuruForm] = useState({ nama: '', username: '', password: '' });
 
   // Reset password modal
   const [rpTarget, setRpTarget] = useState('');
   const [rpVal,    setRpVal]    = useState('');
 
+  // Loading states
+  const [savingAkun, setSavingAkun]       = useState(false);
+  const [deletingId, setDeletingId]       = useState('');
+  const [savingRp,   setSavingRp]         = useState(false);
+  const [importing,  setImporting]        = useState(false);
+
+  // Confirm modal
+  const [confirmMsg,    setConfirmMsg]    = useState('');
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+
+  // Toast
+  const [toast, setToast] = useState<ToastData | null>(null);
+
   useEffect(() => {
+    if (isLoading) return;
     if (!user) { router.replace('/login'); return; }
     if (user.role !== 'proktor' && user.role !== 'admin') { router.replace('/login'); return; }
     loadData();
-  }, [user, router]);
+  }, [isLoading, user, router]);
 
   function loadData() {
-    const s = getStore();
-    const map: Record<string, User> = {};
-    s.users.forEach(u => { map[u.id] = u; });
-    setUserMap(map);
-    setSiswaList([...s.siswas]);
-    setGuruList([...s.gurus]);
-    setKelasList([...s.kelas]);
-    setMapelList([...s.mataPelajaran]);
+    fetch('/api/akun')
+      .then(r => r.json())
+      .then(akun => {
+        const map: Record<string, User> = {};
+        (akun.profiles ?? []).forEach((p: User) => { map[p.id] = p; });
+        setUserMap(map);
+        setSiswaList(akun.siswas ?? []);
+        setGuruList(akun.gurus ?? []);
+        setKelasList(akun.kelas ?? []);
+      })
+      .catch(console.error);
   }
 
   // ── Siswa handlers ─────────────────────────────────────────
 
   function handleTambahSiswa() {
-    setSiswForm({ nis: '', nama: '', id_kelas: '', username: '', password: '' });
+    setSiswForm({ nama: '', id_kelas: '', username: '', password: '' });
     setEditId(''); setError(''); setMode('tambah');
   }
 
   function handleEditSiswa(siswa: Siswa) {
     const u = userMap[siswa.id_user];
-    setSiswForm({ nis: siswa.nis, nama: siswa.nama, id_kelas: siswa.id_kelas, username: u?.username ?? '', password: '' });
-    setEditId(siswa.id); setError(''); setMode('edit');
+    setSiswForm({ nama: siswa.nama, id_kelas: siswa.id_kelas, username: u?.username ?? '', password: '' });
+    // BUG FIX: pakai id_user bukan id — userId di API adalah auth user id
+    setEditId(siswa.id_user); setError(''); setMode('edit');
   }
 
-  function handleSaveSiswa() {
+  async function handleSaveSiswa() {
     setError('');
-    const s = getStore();
-    if (!siswForm.nis.trim())      { setError('NIS wajib diisi.'); return; }
     if (!siswForm.nama.trim())     { setError('Nama wajib diisi.'); return; }
     if (!siswForm.id_kelas)        { setError('Kelas wajib dipilih.'); return; }
     if (!siswForm.username.trim()) { setError('Username wajib diisi.'); return; }
     if (mode === 'tambah') {
       if (!siswForm.password.trim()) { setError('Password wajib diisi.'); return; }
-      if (s.siswas.some(x => x.nis === siswForm.nis.trim())) { setError('NIS sudah terdaftar.'); return; }
-      if (s.users.some(x => x.username === siswForm.username.trim())) { setError('Username sudah dipakai.'); return; }
-      createSiswa({ nis: siswForm.nis.trim(), nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas, username: siswForm.username.trim(), password: siswForm.password });
-    } else {
-      updateSiswa(editId, { nis: siswForm.nis.trim(), nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas });
-      if (siswForm.password.trim()) resetPassword(s.siswas.find(x => x.id === editId)!.id_user, siswForm.password);
     }
-    loadData(); setMode('list');
+    setSavingAkun(true);
+    try {
+      if (mode === 'tambah') {
+        const res = await fetch('/api/akun', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: siswForm.username.trim(), password: siswForm.password, nama: siswForm.nama.trim(), role: 'siswa', nis: siswForm.username.trim(), id_kelas: siswForm.id_kelas }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
+      } else {
+        const res = await fetch('/api/akun', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: editId, nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
+      }
+      setSiswForm({ nama: '', id_kelas: '', username: '', password: '' });
+      setToast({ msg: `Siswa berhasil ${mode === 'tambah' ? 'ditambahkan' : 'diperbarui'}.`, type: 'success' });
+      loadData(); setMode('list');
+    } catch {
+      setError('Terjadi kesalahan. Coba lagi.');
+    } finally {
+      setSavingAkun(false);
+    }
   }
 
-  function handleDeleteSiswa(id: string) {
-    if (!window.confirm('Hapus siswa ini? Tindakan tidak bisa dibatalkan.')) return;
-    deleteSiswa(id); loadData();
+  async function handleDeleteSiswa(id: string) {
+    setConfirmMsg('Hapus siswa ini? Tindakan tidak bisa dibatalkan.');
+    setConfirmAction(() => async () => {
+      setDeletingId(id);
+      try {
+        const res = await fetch(`/api/akun?id=${id}&type=siswa`, { method: 'DELETE' });
+        if (!res.ok) { setToast({ msg: 'Gagal menghapus siswa.', type: 'error' }); return; }
+        setToast({ msg: 'Siswa berhasil dihapus.', type: 'success' });
+        loadData();
+      } catch {
+        setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+      } finally {
+        setDeletingId('');
+      }
+    });
   }
 
   // ── Guru handlers ──────────────────────────────────────────
 
   function handleTambahGuru() {
-    setGuruForm({ nip: '', nama: '', mapel_ids: [], username: '', password: '' });
+    setGuruForm({ nama: '', username: '', password: '' });
     setEditId(''); setError(''); setMode('tambah');
   }
 
   function handleEditGuru(guru: Guru) {
     const u = userMap[guru.id_user];
-    setGuruForm({ nip: guru.nip, nama: guru.nama, mapel_ids: [...guru.mapel_ids], username: u?.username ?? '', password: '' });
-    setEditId(guru.id); setError(''); setMode('edit');
+    setGuruForm({ nama: guru.nama, username: u?.username ?? '', password: '' });
+    // BUG FIX: pakai id_user bukan id
+    setEditId(guru.id_user); setError(''); setMode('edit');
   }
 
-  function handleSaveGuru() {
+  async function handleSaveGuru() {
     setError('');
-    const s = getStore();
-    if (!guruForm.nip.trim())      { setError('NIP wajib diisi.'); return; }
     if (!guruForm.nama.trim())     { setError('Nama wajib diisi.'); return; }
     if (!guruForm.username.trim()) { setError('Username wajib diisi.'); return; }
-    if (guruForm.mapel_ids.length === 0) { setError('Pilih minimal 1 mata pelajaran.'); return; }
     if (mode === 'tambah') {
       if (!guruForm.password.trim()) { setError('Password wajib diisi.'); return; }
-      if (s.gurus.some(x => x.nip === guruForm.nip.trim())) { setError('NIP sudah terdaftar.'); return; }
-      if (s.users.some(x => x.username === guruForm.username.trim())) { setError('Username sudah dipakai.'); return; }
-      createGuru({ nip: guruForm.nip.trim(), nama: guruForm.nama.trim(), mapel_ids: guruForm.mapel_ids, username: guruForm.username.trim(), password: guruForm.password });
-    } else {
-      updateGuru(editId, { nip: guruForm.nip.trim(), nama: guruForm.nama.trim(), mapel_ids: guruForm.mapel_ids });
-      if (guruForm.password.trim()) {
-        const g = s.gurus.find(x => x.id === editId);
-        if (g) resetPassword(g.id_user, guruForm.password);
-      }
     }
-    loadData(); setMode('list');
+    setSavingAkun(true);
+    try {
+      if (mode === 'tambah') {
+        const res = await fetch('/api/akun', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: guruForm.username.trim(), password: guruForm.password, nama: guruForm.nama.trim(), role: 'guru', nip: guruForm.username.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
+      } else {
+        const res = await fetch('/api/akun', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: editId, nama: guruForm.nama.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
+      }
+      setGuruForm({ nama: '', username: '', password: '' });
+      setToast({ msg: `Guru berhasil ${mode === 'tambah' ? 'ditambahkan' : 'diperbarui'}.`, type: 'success' });
+      loadData(); setMode('list');
+    } catch {
+      setError('Terjadi kesalahan. Coba lagi.');
+    } finally {
+      setSavingAkun(false);
+    }
   }
 
-  function handleDeleteGuru(id: string) {
-    if (!window.confirm('Hapus guru ini?')) return;
-    const ok = deleteGuru(id);
-    if (!ok) { alert('Tidak bisa hapus guru yang memiliki jadwal ujian aktif.'); return; }
-    loadData();
+  async function handleDeleteGuru(id: string) {
+    setConfirmMsg('Hapus guru ini? Tindakan tidak bisa dibatalkan.');
+    setConfirmAction(() => async () => {
+      setDeletingId(id);
+      try {
+        const res = await fetch(`/api/akun?id=${id}&type=guru`, { method: 'DELETE' });
+        if (!res.ok) { setToast({ msg: 'Tidak bisa hapus guru yang memiliki jadwal ujian aktif.', type: 'error' }); return; }
+        setToast({ msg: 'Guru berhasil dihapus.', type: 'success' });
+        loadData();
+      } catch {
+        setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+      } finally {
+        setDeletingId('');
+      }
+    });
   }
 
   function handleResetPassword(userId: string) { setRpTarget(userId); setRpVal(''); }
-  function handleSaveResetPassword() {
+  async function handleSaveResetPassword() {
     if (!rpVal.trim()) return;
-    resetPassword(rpTarget, rpVal.trim());
-    setRpTarget(''); setRpVal('');
-    alert('Password berhasil direset.');
+    setSavingRp(true);
+    try {
+      const res = await fetch('/api/akun', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: rpTarget, password: rpVal.trim() }),
+      });
+      if (!res.ok) { setToast({ msg: 'Gagal mereset password.', type: 'error' }); return; }
+      setRpTarget(''); setRpVal('');
+      setToast({ msg: 'Password berhasil direset.', type: 'success' });
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+    } finally {
+      setSavingRp(false);
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────
   const kelasMap: Record<string, string> = {};
   kelasList.forEach(k => { kelasMap[k.id] = k.nama_kelas; });
-  const mapelMap: Record<string, string> = {};
-  mapelList.forEach(m => { mapelMap[m.id] = m.nama_mapel; });
 
   const inForm = mode === 'tambah' || mode === 'edit';
   const inImport = mode === 'import';
@@ -206,41 +286,97 @@ export default function ProktorAkunPage() {
 
   // ── Import Excel (paste) ───────────────────────────────────
   // Format kolom: Kelas | Nama | Username | Password
-  function handleImportPaste() {
+  async function handleImportPaste() {
     const lines = importText.trim().split('\n').filter(l => l.trim());
     const errs: string[] = [];
     let ok = 0;
-    const s = getStore();
-    lines.forEach((line, idx) => {
-      const cols = line.split('\t').map(c => c.trim());
-      if (cols.length < 4) { errs.push(`Baris ${idx + 1}: kolom kurang (butuh 4: Kelas, Nama, Username, Password)`); return; }
-      const [namaKelas, nama, username, password] = cols;
-      const kelas = kelasList.find(k => k.nama_kelas.toLowerCase() === namaKelas.toLowerCase());
-      if (!kelas) { errs.push(`Baris ${idx + 1}: kelas "${namaKelas}" tidak ditemukan`); return; }
-      if (!nama || !username || !password) { errs.push(`Baris ${idx + 1}: nama/username/password tidak boleh kosong`); return; }
-      if (s.users.some(u => u.username === username)) { errs.push(`Baris ${idx + 1}: username "${username}" sudah dipakai`); return; }
-      const nis = username; // gunakan username sebagai NIS jika tidak ada kolom NIS
-      createSiswa({ nis, nama, id_kelas: kelas.id, username, password });
-      ok++;
-    });
+    setImporting(true);
+    try {
+      for (let idx = 0; idx < lines.length; idx++) {
+        const cols = lines[idx].split('\t').map(c => c.trim());
+        if (cols.length < 4) { errs.push(`Baris ${idx + 1}: kolom kurang (butuh 4: Kelas, Nama, Username, Password)`); continue; }
+        const [namaKelas, nama, username, password] = cols;
+        const kelas = kelasList.find(k => k.nama_kelas.toLowerCase() === namaKelas.toLowerCase());
+        if (!kelas) { errs.push(`Baris ${idx + 1}: kelas "${namaKelas}" tidak ditemukan`); continue; }
+        if (!nama || !username || !password) { errs.push(`Baris ${idx + 1}: nama/username/password tidak boleh kosong`); continue; }
+        const nis = username;
+        const res = await fetch('/api/akun', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'siswa', nis, nama, id_kelas: kelas.id, username, password }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          errs.push(`Baris ${idx + 1}: ${data.error ?? 'Gagal menyimpan'}`);
+        } else {
+          ok++;
+        }
+      }
+      setImportErrors(errs);
+      setImportSuccess(ok);
+      if (ok > 0) {
+        loadData();
+        setToast({ msg: `${ok} siswa berhasil diimport.`, type: 'success' });
+      }
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan saat import.', type: 'error' });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // Format kolom: Nama | Username | Password
+  async function handleImportGuruPaste() {
+    const lines = importText.trim().split('\n').filter(l => l.trim());
+    const errs: string[] = [];
+    let ok = 0;
+    setImporting(true);
+    try {
+      for (let idx = 0; idx < lines.length; idx++) {
+        const cols = lines[idx].split('\t').map(c => c.trim());
+      if (cols.length < 3) { errs.push(`Baris ${idx + 1}: kolom kurang (butuh 3: Nama, Username, Password)`); continue; }
+      const [nama, username, password] = cols;
+      if (!nama || !username || !password) { errs.push(`Baris ${idx + 1}: nama/username/password tidak boleh kosong`); continue; }
+      const res = await fetch('/api/akun', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'guru', nip: username, nama, username, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        errs.push(`Baris ${idx + 1}: ${data.error ?? 'Gagal menyimpan'}`);
+      } else {
+        ok++;
+      }
+    }
     setImportErrors(errs);
     setImportSuccess(ok);
-    if (ok > 0) loadData();
+    if (ok > 0) {
+      loadData();
+      setToast({ msg: `${ok} guru berhasil diimport.`, type: 'success' });
+    }
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan saat import.', type: 'error' });
+    } finally {
+      setImporting(false);
+    }
   }
 
   function pageTitle() {
+    if (inImport && tab === 'guru') return 'Import Guru dari Excel';
     if (inImport) return 'Import Siswa dari Excel';
     if (inForm) return `${mode === 'tambah' ? 'Tambah' : 'Edit'} ${tab === 'siswa' ? 'Siswa' : 'Guru'}`;
     return 'Kelola Akun';
   }
 
-  if (!user) return null;
+  if (isLoading || !user) return null;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
-
-      <main style={{ flex: 1, overflow: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
+      <AppTopbar pageLabel="Kelola Akun" />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
         <div style={{
           padding: '1.25rem 1.5rem',
@@ -267,7 +403,10 @@ export default function ProktorAkunPage() {
             </div>
           )}
           {!inForm && !inImport && tab === 'guru' && (
-            <button className="btn btn-primary btn-sm" onClick={handleTambahGuru}>+ Tambah Guru</button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-outline btn-sm" onClick={() => { setMode('import'); setImportText(''); setImportErrors([]); setImportSuccess(0); }}>Import Excel</button>
+              <button className="btn btn-primary btn-sm" onClick={handleTambahGuru}>+ Tambah Guru</button>
+            </div>
           )}
         </div>
 
@@ -296,7 +435,7 @@ export default function ProktorAkunPage() {
           )}
 
           {/* ── IMPORT SISWA ──────────────────────────────────── */}
-          {inImport && (
+          {tab === 'siswa' && inImport && (
             <div style={{ maxWidth: 640 }}>
               <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
                 Salin data dari Excel lalu paste di bawah. Format kolom: <strong>Kelas | Nama | Username | Password</strong> (tab-separated, tanpa header).
@@ -421,7 +560,6 @@ export default function ProktorAkunPage() {
                           </th>
                         ))}
                         <th style={{ padding: '0.625rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)' }}>Password</th>
-                        <th style={{ padding: '0.625rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)' }}>Mapel</th>
                         <th style={{ padding: '0.625rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)' }}>Aksi</th>
                       </tr>
                     </thead>
@@ -433,13 +571,6 @@ export default function ProktorAkunPage() {
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>{guru.nama}</td>
                             <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{u?.username ?? '—'}</td>
                             <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{u?.password ?? '—'}</td>
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                                {guru.mapel_ids.map(mid => (
-                                  <span key={mid} className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>{mapelMap[mid] ?? mid}</span>
-                                ))}
-                              </div>
-                            </td>
                             <td style={{ padding: '0.75rem 1rem' }}>
                               <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                                 <button className="btn btn-outline btn-sm" onClick={() => handleEditGuru(guru)}>Edit</button>
@@ -462,9 +593,8 @@ export default function ProktorAkunPage() {
             <div style={{ maxWidth: 560, background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', display: 'grid', gap: '1rem' }}>
               {error && <div className="alert alert-danger">{error}</div>}
               {[
-                { label: 'NIS *',      key: 'nis',      type: 'text',     placeholder: 'Contoh: 20250001' },
-                { label: 'Nama Lengkap *', key: 'nama', type: 'text',     placeholder: 'Nama siswa' },
-                { label: 'Username *', key: 'username', type: 'text',     placeholder: 'Username untuk login' },
+                { label: 'Nama Lengkap *', key: 'nama',     type: 'text',     placeholder: 'Nama siswa' },
+                { label: 'Username *',     key: 'username', type: 'text',     placeholder: 'Username untuk login' },
                 { label: mode === 'tambah' ? 'Password *' : 'Password Baru (kosongkan jika tidak diubah)', key: 'password', type: 'password', placeholder: '••••••••' },
               ].map(f => (
                 <div key={f.key} className="form-group">
@@ -476,15 +606,19 @@ export default function ProktorAkunPage() {
               ))}
               <div className="form-group">
                 <label className="form-label">Kelas *</label>
-                <select className="form-select" value={siswForm.id_kelas} onChange={e => setSiswForm(p => ({ ...p, id_kelas: e.target.value }))}>
-                  <option value="">— Pilih Kelas —</option>
-                  {kelasList.map(k => <option key={k.id} value={k.id}>{k.nama_kelas}</option>)}
-                </select>
+                <CustomSelect
+                  value={siswForm.id_kelas}
+                  onChange={v => setSiswForm(p => ({ ...p, id_kelas: v }))}
+                  options={[
+                    { value: '', label: '— Pilih Kelas —' },
+                    ...kelasList.map(k => ({ value: k.id, label: k.nama_kelas })),
+                  ]}
+                />
               </div>
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => setMode('list')}>Batal</button>
-                <button className="btn btn-primary" onClick={handleSaveSiswa}>
-                  {mode === 'tambah' ? 'Tambah Siswa' : 'Simpan'}
+                <button className="btn btn-ghost" onClick={() => setMode('list')} disabled={savingAkun}>Batal</button>
+                <button className="btn btn-primary" onClick={handleSaveSiswa} disabled={savingAkun}>
+                  {savingAkun ? 'Menyimpan...' : mode === 'tambah' ? 'Tambah Siswa' : 'Simpan'}
                 </button>
               </div>
             </div>
@@ -492,50 +626,53 @@ export default function ProktorAkunPage() {
 
           {/* ── FORM: GURU ────────────────────────────────────── */}
           {tab === 'guru' && inForm && (
-            <div style={{ maxWidth: 600, background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', display: 'grid', gap: '1rem' }}>
+            <div style={{ maxWidth: 560, background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', display: 'grid', gap: '1rem' }}>
               {error && <div className="alert alert-danger">{error}</div>}
               {[
-                { label: 'NIP *',      key: 'nip',      type: 'text',     placeholder: 'Nomor Induk Pegawai' },
-                { label: 'Nama Lengkap *', key: 'nama', type: 'text',     placeholder: 'Nama guru' },
-                { label: 'Username *', key: 'username', type: 'text',     placeholder: 'Username untuk login' },
+                { label: 'Nama Lengkap *', key: 'nama',     type: 'text',     placeholder: 'Nama guru' },
+                { label: 'Username *',     key: 'username', type: 'text',     placeholder: 'Username untuk login' },
                 { label: mode === 'tambah' ? 'Password *' : 'Password Baru (kosongkan jika tidak diubah)', key: 'password', type: 'password', placeholder: '••••••••' },
               ].map(f => (
                 <div key={f.key} className="form-group">
                   <label className="form-label">{f.label}</label>
                   <input className="form-input" type={f.type} placeholder={f.placeholder}
-                    value={(guruForm as unknown as Record<string, string>)[f.key]}
+                    value={(guruForm as Record<string, string>)[f.key]}
                     onChange={e => setGuruForm(p => ({ ...p, [f.key]: e.target.value }))} />
                 </div>
               ))}
-              <div className="form-group">
-                <label className="form-label">Mata Pelajaran yang Diampu *</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.375rem' }}>
-                  {mapelList.map(m => {
-                    const checked = guruForm.mapel_ids.includes(m.id);
-                    return (
-                      <label key={m.id} style={{
-                        display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        padding: '0.375rem 0.625rem', borderRadius: '0.5rem',
-                        background: checked ? 'var(--color-primary-subtle)' : 'var(--color-surface-alt)',
-                        border: `1px solid ${checked ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                        cursor: 'pointer', fontSize: '0.8125rem',
-                      }}>
-                        <input type="checkbox" checked={checked} style={{ accentColor: 'var(--color-primary)' }}
-                          onChange={() => setGuruForm(p => ({
-                            ...p,
-                            mapel_ids: checked ? p.mapel_ids.filter(id => id !== m.id) : [...p.mapel_ids, m.id],
-                          }))} />
-                        {m.nama_mapel}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => setMode('list')}>Batal</button>
-                <button className="btn btn-primary" onClick={handleSaveGuru}>
-                  {mode === 'tambah' ? 'Tambah Guru' : 'Simpan'}
+                <button className="btn btn-ghost" onClick={() => setMode('list')} disabled={savingAkun}>Batal</button>
+                <button className="btn btn-primary" onClick={handleSaveGuru} disabled={savingAkun}>
+                  {savingAkun ? 'Menyimpan...' : mode === 'tambah' ? 'Tambah Guru' : 'Simpan'}
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── IMPORT: GURU ──────────────────────────────────── */}
+          {tab === 'guru' && inImport && (
+            <div style={{ maxWidth: 640, background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', display: 'grid', gap: '1rem' }}>
+              <div className="alert alert-info" style={{ fontSize: '0.875rem' }}>
+                Salin data dari Excel lalu paste di bawah.<br />
+                Format kolom (tab-separated): <strong>Nama | Username | Password</strong>
+              </div>
+              <textarea className="form-input form-textarea" rows={10}
+                placeholder={'Ahmad Fauzi\tguru.ahmad\tpass123\nBudi Santoso\tguru.budi\tpass456'}
+                value={importText} onChange={e => setImportText(e.target.value)} />
+              {importSuccess > 0 && (
+                <div className="alert alert-success">{importSuccess} guru berhasil diimpor.</div>
+              )}
+              {importErrors.length > 0 && (
+                <div className="alert alert-danger" style={{ fontSize: '0.8125rem' }}>
+                  <strong>Terdapat {importErrors.length} error:</strong>
+                  <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+                    {importErrors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => { setMode('list'); setImportText(''); setImportErrors([]); setImportSuccess(0); }}>Batal</button>
+                <button className="btn btn-primary" onClick={handleImportGuruPaste}>Import</button>
               </div>
             </div>
           )}
@@ -550,13 +687,34 @@ export default function ProktorAkunPage() {
                 onChange={e => setRpVal(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSaveResetPassword()} />
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button className="btn btn-ghost" onClick={() => setRpTarget('')}>Batal</button>
-                <button className="btn btn-primary" onClick={handleSaveResetPassword}>Simpan</button>
+                <button className="btn btn-ghost" onClick={() => setRpTarget('')} disabled={savingRp}>Batal</button>
+                <button className="btn btn-primary" onClick={handleSaveResetPassword} disabled={savingRp}>
+                  {savingRp ? 'Menyimpan...' : 'Simpan'}
+                </button>
               </div>
             </div>
           </div>
         )}
+
+        {/* ── CONFIRM MODAL ────────────────────────────────────── */}
+        {confirmMsg && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
+            <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 360 }}>
+              <p style={{ margin: '0 0 1.25rem', fontSize: '0.9375rem', color: 'var(--color-text)', lineHeight: 1.5 }}>{confirmMsg}</p>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => { setConfirmMsg(''); setConfirmAction(null); }} disabled={!!deletingId}>Batal</button>
+                <button className="btn btn-danger" onClick={() => { confirmAction?.(); setConfirmMsg(''); }} disabled={!!deletingId}
+                  style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}>
+                  {deletingId ? 'Menghapus...' : 'Ya, Hapus'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Toast toast={toast} onClose={() => setToast(null)} />
       </main>
+      </div>
     </div>
   );
 }

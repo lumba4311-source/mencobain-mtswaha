@@ -5,69 +5,89 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import {
-  getStore, getJadwalAktifBySiswa, getHistoriNilai,
-} from '@/lib/store';
-import type { JadwalUjian, Nilai, Ujian } from '@/types';
+import type { JadwalUjian, Ujian } from '@/types';
 
 export default function SiswaDashboard() {
-  const { user, siswa, logout } = useAuth();
+  const { user, siswa, logout, isLoading } = useAuth();
   const router = useRouter();
   const [jadwalAktif, setJadwalAktif] = useState<JadwalUjian[]>([]);
-  const [histori, setHistori] = useState<Nilai[]>([]);
   const [ujianMap, setUjianMap] = useState<Record<string, Ujian>>({});
+  const [kelasMap, setKelasMap] = useState<Record<string, string>>({});
+  // jadwalId -> status session ('berlangsung' | 'selesai' | 'force_submit' | null)
+  const [sessionStatusMap, setSessionStatusMap] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user || user.role !== 'siswa' || !siswa) {
       router.replace('/login');
       return;
     }
-    const store = getStore();
-    const aktif = getJadwalAktifBySiswa(siswa.id);
-    const hist  = getHistoriNilai(siswa.id);
-    const map: Record<string, Ujian> = {};
-    store.ujians.forEach(u => { map[u.id] = u; });
-    setJadwalAktif(aktif);
-    setHistori(hist);
-    setUjianMap(map);
-  }, [user, siswa, router]);
+    const currentSiswaId = siswa.id;
+    Promise.all([
+      fetch(`/api/jadwal?siswaId=${currentSiswaId}`),
+      fetch('/api/ujian'),
+      fetch('/api/akun'),
+    ]).then(async ([jadwalRes, ujianRes, akunRes]) => {
+      // C-01/C-02: cek res.ok sebelum parse JSON — hindari crash saat API error
+      if (!jadwalRes.ok || !ujianRes.ok || !akunRes.ok) {
+        console.error('Gagal memuat data dashboard siswa: salah satu API error');
+        return;
+      }
+      const jadwals: JadwalUjian[] = await jadwalRes.json();
+      const ujians: Ujian[]        = await ujianRes.json();
+      const akun                   = await akunRes.json();
+      const map: Record<string, Ujian> = {};
+      ujians.forEach((u: Ujian) => { map[u.id] = u; });
+      setUjianMap(map);
+      setJadwalAktif(jadwals);
+      const km: Record<string, string> = {};
+      (akun.kelas ?? []).forEach((k: { id: string; nama_kelas: string }) => { km[k.id] = k.nama_kelas; });
+      setKelasMap(km);
 
-  if (!user || !siswa) return null;
+      // Load status session untuk setiap jadwal
+      const sessionFetches = (jadwals as JadwalUjian[]).map((j: JadwalUjian) =>
+        fetch(`/api/session?siswaId=${currentSiswaId}&jadwalId=${j.id}`)
+          .then(r => r.json())
+          .then(sess => ({ jadwalId: j.id, status: sess?.status ?? null }))
+          .catch(() => ({ jadwalId: j.id, status: null }))
+      );
+      Promise.all(sessionFetches).then(results => {
+        const sm: Record<string, string | null> = {};
+        results.forEach(({ jadwalId, status }) => { sm[jadwalId] = status; });
+        setSessionStatusMap(sm);
+      });
+    }).catch(console.error);
+  }, [isLoading, user, siswa, router]);
 
-  const store = getStore();
-  const kelasMap: Record<string, string> = {};
-  store.kelas.forEach(k => { kelasMap[k.id] = k.nama_kelas; });
-  const mapelMap: Record<string, string> = {};
-  store.mataPelajaran.forEach(m => { mapelMap[m.id] = m.nama_mapel; });
+  if (isLoading || !user || !siswa) return null;
 
   function statusBadgeClass(status: string) {
-    if (status === 'Dibuka')   return 'badge badge-success';
-    if (status === 'Menunggu') return 'badge badge-warning';
+    if (status === 'Published') return 'badge badge-success';
     return 'badge badge-neutral';
-  }
-
-  function nilaiColor(nilai: number, kkm: number) {
-    return nilai >= kkm ? 'var(--color-success)' : 'var(--color-danger)';
   }
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      {/* Topbar */}
       <header className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>
-            </svg>
-          </div>
-          <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-text)' }}>E-CBT MTS WAHA</span>
-          <span style={{ color: 'var(--color-border)', fontSize: '1rem' }}>|</span>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Dashboard Siswa</span>
+        <div className="topbar-left">
+          <img src="/favicon.ico" alt="Logo MTS WAHA" width={28} height={28} style={{ objectFit: 'contain', flexShrink: 0 }} />
+          <span className="topbar-appname">E-CBT MTS WAHA</span>
+          <div className="topbar-divider" aria-hidden="true" />
+          <span className="topbar-page-label">Dashboard Siswa</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{user.nama}</span>
+        <div className="topbar-center">
           <ThemeToggle />
-          <button className="btn btn-ghost btn-sm" onClick={() => { logout(); router.replace('/login'); }}>Keluar</button>
+        </div>
+        <div className="topbar-right">
+          <div className="topbar-user">
+            <div className="topbar-avatar">{user.nama?.charAt(0)?.toUpperCase() ?? 'S'}</div>
+            <span className="topbar-username">{user.nama}</span>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={async () => { await logout(); router.replace('/login'); }}
+            aria-label="Keluar"
+          >Keluar</button>
         </div>
       </header>
 
@@ -83,7 +103,7 @@ export default function SiswaDashboard() {
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>{siswa.nama}</div>
             <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-              NIS: {siswa.nis} &nbsp;·&nbsp; Kelas: {kelasMap[siswa.id_kelas] ?? '-'}
+              Kelas: {kelasMap[siswa.id_kelas] ?? '-'}
             </div>
           </div>
           <span className="badge badge-primary">Siswa</span>
@@ -102,7 +122,6 @@ export default function SiswaDashboard() {
             <div style={{ display: 'grid', gap: '0.875rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
               {jadwalAktif.map(jadwal => {
                 const ujian = ujianMap[jadwal.id_ujian];
-                const mapelNama = ujian ? mapelMap[ujian.id_mapel] : '-';
                 return (
                   <div key={jadwal.id} className="card card-hover" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -110,97 +129,46 @@ export default function SiswaDashboard() {
                         <div style={{ fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.25rem' }}>
                           {ujian?.nama_ujian ?? 'Ujian'}
                         </div>
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{mapelNama}</div>
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{ujian?.jenis_ujian ?? '-'}</div>
                       </div>
-                      <span className={statusBadgeClass(jadwal.status)}>{jadwal.status}</span>
+                      <span className={statusBadgeClass(jadwal.status_publikasi)}>{jadwal.status_publikasi}</span>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-text-subtle)' }}>
-                      <span>Ruangan: {jadwal.ruangan}</span>
-                      <span>·</span>
                       <span>{ujian?.durasi} menit</span>
-                      {ujian && <span>· KKM {ujian.nilai_kkm}</span>}
+
                     </div>
                     {(() => {
-                      const now = Date.now();
-                      const mulai = new Date(jadwal.waktu_mulai).getTime();
-                      const belumWaktu = now < mulai;
-                      if (jadwal.status === 'Dibuka' && !belumWaktu) {
+                      const sessionStatus = sessionStatusMap[jadwal.id];
+                      const sudahSelesai = sessionStatus === 'selesai' || sessionStatus === 'force_submit';
+
+                      // Tanpa waktu_mulai, siswa bisa langsung mulai jika Published
+                      if (jadwal.status_publikasi === 'Published') {
+                        if (sudahSelesai) {
+                          return (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              style={{ alignSelf: 'flex-start', color: 'var(--color-success)', borderColor: 'var(--color-success)', cursor: 'not-allowed', opacity: 0.7 }}
+                              disabled
+                            >
+                              ✓ Selesai
+                            </button>
+                          );
+                        }
                         return (
                           <Link
                             href={`/siswa/ujian?jadwal=${jadwal.id}`}
                             className="btn btn-primary btn-sm"
                             style={{ alignSelf: 'flex-start' }}
                           >
-                            Mulai Ujian
+                            {sessionStatus === 'berlangsung' ? 'Lanjutkan Ujian' : 'Mulai Ujian'}
                           </Link>
                         );
                       }
-                      const label = belumWaktu
-                        ? `Mulai ${new Date(jadwal.waktu_mulai).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`
-                        : 'Belum Dibuka';
-                      return <button className="btn btn-outline btn-sm" disabled>{label}</button>;
+                      return <button className="btn btn-outline btn-sm" disabled>Belum Dibuka</button>;
                     })()}
                   </div>
                 );
               })}
-            </div>
-          )}
-        </section>
-
-        {/* Histori Nilai */}
-        <section>
-          <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, color: 'var(--color-text)', marginBottom: '1rem', marginTop: 0 }}>
-            Riwayat Ujian
-          </h2>
-          {histori.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
-              Belum ada riwayat ujian.
-            </div>
-          ) : (
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Ujian</th>
-                    <th>Mata Pelajaran</th>
-                    <th>Benar</th>
-                    <th>Salah</th>
-                    <th>Kosong</th>
-                    <th>Nilai</th>
-                    <th>Status</th>
-                    <th>Waktu Submit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {histori.map(n => {
-                    const jadwal = store.jadwalUjians.find(j => j.id === n.id_jadwal);
-                    const ujian  = jadwal ? ujianMap[jadwal.id_ujian] : null;
-                    const kkm    = ujian?.nilai_kkm ?? 75;
-                    return (
-                      <tr key={n.id}>
-                        <td style={{ fontWeight: 500 }}>{ujian?.nama_ujian ?? '-'}</td>
-                        <td>{ujian ? mapelMap[ujian.id_mapel] : '-'}</td>
-                        <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{n.jumlah_benar}</td>
-                        <td style={{ color: 'var(--color-danger)', fontWeight: 600 }}>{n.jumlah_salah}</td>
-                        <td style={{ color: 'var(--color-text-muted)' }}>{n.jumlah_kosong}</td>
-                        <td>
-                          <span style={{ fontWeight: 700, fontSize: '1rem', color: nilaiColor(n.nilai, kkm) }}>
-                            {n.nilai.toFixed(2)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={n.lulus ? 'badge badge-success' : 'badge badge-danger'}>
-                            {n.lulus ? 'Lulus' : 'Tidak Lulus'}
-                          </span>
-                        </td>
-                        <td style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-                          {new Date(n.submitted_at).toLocaleString('id-ID')}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           )}
         </section>

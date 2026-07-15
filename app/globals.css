@@ -2,69 +2,73 @@
 
 /* ============================================================
    UMBK — MTS WAHA
-   Design System: Dark Forest (Varian A) + Light Mode toggle
+   Design System: Arctic Reflection v1.0
+   Light & Dark
    ============================================================ */
 
-/* ── Color Tokens ── */
+/* ── Color Tokens (Light) ── */
 :root {
-  /* Primary: Hijau Hutan */
-  --color-primary:         #2d6a4f;
-  --color-primary-hover:   #1b4332;
-  --color-primary-light:   #52b788;
-  --color-primary-subtle:  #d8f3dc;
+  /* Brand */
+  --color-primary:         #243C4C;
+  --color-primary-hover:   #2D4A5C;
+  --color-primary-active:  #1B2F3C;
+  --color-primary-light:   #5289AD;
+  --color-primary-subtle:  #EFF6FF;
 
-  /* Secondary: Emas */
-  --color-secondary:       #e9c46a;
-  --color-secondary-hover: #f4a261;
-  --color-secondary-dark:  #c9a227;
+  --color-secondary:       #5289AD;
+  --color-secondary-hover: #6498BA;
+  --color-secondary-dark:  #437998;
+
+  --color-accent:          #698696;
+  --color-accent-light:    #89A4B2;
 
   /* Surface */
-  --color-bg:              #f8faf9;
-  --color-surface:         #ffffff;
-  --color-surface-raised:  #f0f4f1;
-  --color-border:          #d1d9d4;
-  --color-border-subtle:   #e8eeeb;
+  --color-bg:              #F4FCFB;
+  --color-surface:         #FFFFFF;
+  --color-surface-raised:  #F8FBFC;
+  --color-border:          #D7E2E4;
+  --color-border-subtle:   #E9EFF1;
 
   /* Text */
-  --color-text:            #1a2e22;
-  --color-text-muted:      #4a6358;
-  --color-text-subtle:     #7a9485;
-  --color-text-inverse:    #ffffff;
+  --color-text:            #243C4C;
+  --color-text-muted:      #61727E;
+  --color-text-subtle:     #8A9AA4;
+  --color-text-inverse:    #FFFFFF;
 
   /* Status */
-  --color-success:         #2d6a4f;
-  --color-success-bg:      #d8f3dc;
-  --color-warning:         #e9c46a;
-  --color-warning-bg:      #fef9ec;
-  --color-danger:          #d62828;
-  --color-danger-bg:       #fdecea;
-  --color-info:            #2196f3;
-  --color-info-bg:         #e3f2fd;
+  --color-success:         #22C55E;
+  --color-success-bg:      #ECFDF3;
+  --color-warning:         #F59E0B;
+  --color-warning-bg:      #FFF7ED;
+  --color-danger:          #DC2626;
+  --color-danger-bg:       #FEF2F2;
+  --color-info:            #3B82F6;
+  --color-info-bg:         #EFF6FF;
 
   /* Navigasi Soal */
-  --color-soal-belum:      #9eaaa4;
-  --color-soal-belum-bg:   #eef1f0;
-  --color-soal-sudah:      #2d6a4f;
-  --color-soal-sudah-bg:   #d8f3dc;
-  --color-soal-ragu:       #e9c46a;
-  --color-soal-ragu-bg:    #fef9ec;
-  --color-soal-aktif-ring: #2d6a4f;
+  --color-soal-belum:      #94A3B8;
+  --color-soal-belum-bg:   #F1F5F9;
+  --color-soal-sudah:      #5289AD;
+  --color-soal-sudah-bg:   #EFF6FF;
+  --color-soal-ragu:       #F59E0B;
+  --color-soal-ragu-bg:    #FFF7ED;
+  --color-soal-aktif-ring: #5289AD;
 
   /* Spacing base */
   --space-base: 8px;
 
   /* Shadow */
-  --shadow-sm:  0 1px 2px 0 rgba(0,0,0,0.05);
-  --shadow-md:  0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.06);
-  --shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
-  --shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.10), 0 8px 10px -6px rgba(0,0,0,0.05);
+  --shadow-sm:  0 2px 6px rgba(36,60,76,.06);
+  --shadow-md:  0 8px 20px rgba(36,60,76,.08);
+  --shadow-lg:  0 18px 40px rgba(36,60,76,.12);
+  --shadow-xl:  0 24px 48px rgba(36,60,76,.16);
 
   /* Radius */
-  --radius-sm:   0.125rem;
-  --radius:      0.25rem;
-  --radius-md:   0.375rem;
-  --radius-lg:   0.5rem;
-  --radius-xl:   0.75rem;
+  --radius-sm:   8px;
+  --radius:      8px;
+  --radius-md:   12px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
   --radius-full: 9999px;
 
   /* Layout */
@@ -75,47 +79,57 @@
 
 /* ── Dark Mode ── */
 [data-theme="dark"] {
-  --color-primary:         #52b788;
-  --color-primary-hover:   #74c69d;
-  --color-primary-light:   #95d5b2;
-  --color-primary-subtle:  #1b4332;
+  /* Brand */
+  --color-primary:         #5289AD;
+  --color-primary-hover:   #6A9DBC;
+  --color-primary-active:  #437998;
+  --color-primary-light:   #8FB4C6;
+  --color-primary-subtle:  #1C3A4A;
 
-  --color-secondary:       #e9c46a;
-  --color-secondary-hover: #f4a261;
-  --color-secondary-dark:  #ffd166;
+  --color-secondary:       #698696;
+  --color-secondary-hover: #7D98A7;
+  --color-secondary-dark:  #597382;
 
-  --color-bg:              #0d1f16;
-  --color-surface:         #132a1d;
-  --color-surface-raised:  #1b3a28;
-  --color-border:          #2d5a3d;
-  --color-border-subtle:   #1f4530;
+  --color-accent:          #8FB4C6;
+  --color-accent-light:    #A6C4D2;
 
-  --color-text:            #d8f3dc;
-  --color-text-muted:      #95d5b2;
-  --color-text-subtle:     #52b788;
-  --color-text-inverse:    #0d1f16;
+  /* Surface */
+  --color-bg:              #15232D;
+  --color-surface:         #1C2F3B;
+  --color-surface-raised:  #213746;
+  --color-border:          #34505C;
+  --color-border-subtle:   #314A57;
 
-  --color-success:         #52b788;
-  --color-success-bg:      #1b4332;
-  --color-warning:         #e9c46a;
-  --color-warning-bg:      #3d2e0a;
-  --color-danger:          #ff6b6b;
-  --color-danger-bg:       #3d0f0f;
-  --color-info:            #64b5f6;
-  --color-info-bg:         #0d2137;
+  /* Text */
+  --color-text:            #F4FCFB;
+  --color-text-muted:      #C8D8DF;
+  --color-text-subtle:     #9DB2BC;
+  --color-text-inverse:    #243C4C;
 
-  --color-soal-belum:      #4a6358;
-  --color-soal-belum-bg:   #1b3a28;
-  --color-soal-sudah:      #52b788;
-  --color-soal-sudah-bg:   #1b4332;
-  --color-soal-ragu:       #e9c46a;
-  --color-soal-ragu-bg:    #3d2e0a;
-  --color-soal-aktif-ring: #52b788;
+  /* Status */
+  --color-success:         #4ADE80;
+  --color-success-bg:      rgba(34,197,94,.15);
+  --color-warning:         #FBBF24;
+  --color-warning-bg:      rgba(251,191,36,.15);
+  --color-danger:          #EF4444;
+  --color-danger-bg:       rgba(239,68,68,.15);
+  --color-info:            #60A5FA;
+  --color-info-bg:         rgba(96,165,250,.15);
 
-  --shadow-sm:  0 1px 2px 0 rgba(0,0,0,0.3);
-  --shadow-md:  0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
-  --shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.4), 0 4px 6px -4px rgba(0,0,0,0.3);
-  --shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.4);
+  /* Navigasi Soal */
+  --color-soal-belum:      #C8D8DF;
+  --color-soal-belum-bg:   #2A4255;
+  --color-soal-sudah:      #8FB4C6;
+  --color-soal-sudah-bg:   #1C3A4A;
+  --color-soal-ragu:       #FBBF24;
+  --color-soal-ragu-bg:    rgba(251,191,36,.15);
+  --color-soal-aktif-ring: #8FB4C6;
+
+  /* Shadow */
+  --shadow-sm:  0 2px 6px rgba(0,0,0,.25);
+  --shadow-md:  0 8px 20px rgba(0,0,0,.35);
+  --shadow-lg:  0 18px 40px rgba(0,0,0,.45);
+  --shadow-xl:  0 24px 48px rgba(0,0,0,.55);
 }
 
 /* ── Tailwind v4 Theme Bridge ── */
@@ -190,7 +204,7 @@ body {
 
 .btn-secondary {
   background-color: var(--color-secondary);
-  color: #1a2e22;
+  color: var(--color-text-inverse);
   border-color: var(--color-secondary);
 }
 
@@ -309,11 +323,38 @@ body {
 }
 
 .form-select {
+  width: 100%;
+  padding: 0.5625rem 2.5rem 0.5625rem 0.875rem;
+  font-size: 0.9375rem;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+  font-family: inherit;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a6358' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%235289AD' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.875rem center;
-  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.form-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+.form-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--color-surface-raised);
+}
+
+.form-select option {
+  background-color: var(--color-surface);
+  color: var(--color-text);
 }
 
 .form-textarea {
@@ -346,7 +387,7 @@ body {
 
 .badge-primary   { background-color: var(--color-primary-subtle); color: var(--color-primary-hover); }
 .badge-success   { background-color: var(--color-success-bg);     color: var(--color-success); }
-.badge-warning   { background-color: var(--color-warning-bg);     color: #92610a; }
+.badge-warning   { background-color: var(--color-warning-bg);     color: var(--color-warning); }
 .badge-danger    { background-color: var(--color-danger-bg);      color: var(--color-danger); }
 .badge-info      { background-color: var(--color-info-bg);        color: var(--color-info); }
 .badge-neutral   { background-color: var(--color-surface-raised); color: var(--color-text-muted); }
@@ -448,7 +489,7 @@ body {
 .soal-nav-belum {
   background-color: var(--color-soal-belum-bg);
   color: var(--color-soal-belum);
-  border-color: var(--color-soal-belum);
+  border-color: var(--color-border);
 }
 
 .soal-nav-sudah {
@@ -459,18 +500,21 @@ body {
 
 .soal-nav-ragu {
   background-color: var(--color-soal-ragu-bg);
-  color: #92610a;
+  color: var(--color-soal-ragu);
   border-color: var(--color-soal-ragu);
 }
 
-[data-theme="dark"] .soal-nav-ragu {
-  color: var(--color-secondary);
+[data-theme="dark"] .soal-nav-aktif {
+  border-color: var(--color-soal-aktif-ring) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: var(--color-soal-aktif-ring) !important;
 }
 
 .soal-nav-aktif {
   border-color: var(--color-soal-aktif-ring) !important;
   border-width: 2.5px !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  color: var(--color-primary) !important;
 }
 
 /* Opsi Jawaban (Exam) */
@@ -540,19 +584,146 @@ body {
   }
 }
 
-/* Topbar */
+/* ══ Global Topbar ══════════════════════════════════════════════
+   Layout: [logo+name LEFT] [ThemeToggle CENTER] [user+logout RIGHT]
+   Used by all pages (proktor sidebar pages use it above the
+   sidebar+main split; siswa/guru topbar-only pages also use it)
+   ============================================================== */
 .topbar {
   height: 56px;
+  min-height: 56px;
   background-color: var(--color-surface);
-  border-bottom: 1px solid var(--color-border-subtle);
-  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: 0 1.25rem;
-  gap: 0.75rem;
+  padding: 0 20px;
+  gap: 8px;
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: 50;
   box-shadow: var(--shadow-sm);
+}
+
+/* Left slot */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Center slot — ThemeToggle lives here */
+.topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Right slot */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* App brand mark in topbar */
+.topbar-logo {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.topbar-logo:hover { opacity: 0.85; }
+
+.topbar-appname {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.topbar-page-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* User chip in topbar right */
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 99px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  transition: background 0.15s, border-color 0.15s;
+  cursor: default;
+}
+.topbar-user:hover {
+  background: var(--color-primary-subtle);
+  border-color: var(--color-primary-light);
+}
+
+.topbar-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: 0.625rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.topbar-username {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+/* ThemeToggle — pill style, used in topbar-center */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.theme-toggle:hover {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  border-color: var(--color-primary-light);
+  transform: rotate(15deg) scale(1.08);
+}
+.theme-toggle:active {
+  transform: rotate(15deg) scale(0.96);
 }
 
 /* Sidebar */
@@ -589,11 +760,14 @@ body {
 .sidebar-nav-item:hover {
   background-color: var(--color-surface-raised);
   color: var(--color-text);
+  transform: translateX(1px);
 }
 
 .sidebar-nav-item.active {
   background-color: var(--color-primary-subtle);
   color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 
 [data-theme="dark"] .sidebar-nav-item.active {
@@ -613,7 +787,7 @@ body {
 }
 
 .alert-success { background-color: var(--color-success-bg); color: var(--color-success); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
-.alert-warning { background-color: var(--color-warning-bg); color: #92610a; border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
+.alert-warning { background-color: var(--color-warning-bg); color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
 .alert-danger  { background-color: var(--color-danger-bg);  color: var(--color-danger);  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent); }
 .alert-info    { background-color: var(--color-info-bg);    color: var(--color-info);    border-color: color-mix(in srgb, var(--color-info) 30%, transparent); }
 
@@ -728,4 +902,659 @@ body {
 /* Override transition for elements that should animate faster */
 .btn, .form-input, .opsi-item, .soal-nav-btn, .tab-item, .sidebar-nav-item {
   transition: all 0.15s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGIN PAGE — Arctic Reflection Design System 2026
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Keyframes ── */
+@keyframes login-fade-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes login-fade-in-slow {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes login-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes login-spinner {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float-shape {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%       { transform: translateY(-24px) scale(1.04); }
+}
+
+/* ── Root container ── */
+.login-root {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  overflow: hidden;
+  background: linear-gradient(
+    145deg,
+    #EEF6F8 0%,
+    #F4FCFB 35%,
+    #EAF2F6 65%,
+    #F0F8F9 100%
+  );
+}
+
+[data-theme="dark"] .login-root {
+  background: linear-gradient(
+    145deg,
+    #0F1E28 0%,
+    #15232D 35%,
+    #111C25 65%,
+    #13212B 100%
+  );
+}
+
+/* ── Abstract blur shapes ── */
+.login-bg-shape {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 0;
+  animation: float-shape 12s ease-in-out infinite;
+}
+
+.login-bg-shape-1 {
+  width: 520px; height: 520px;
+  top: -160px; left: -100px;
+  background: radial-gradient(circle, rgba(82,137,173,0.13) 0%, transparent 70%);
+  animation-delay: 0s;
+}
+
+.login-bg-shape-2 {
+  width: 400px; height: 400px;
+  bottom: -100px; right: 30%;
+  background: radial-gradient(circle, rgba(36,60,76,0.09) 0%, transparent 70%);
+  animation-delay: 4s;
+}
+
+.login-bg-shape-3 {
+  width: 280px; height: 280px;
+  top: 40%; right: -60px;
+  background: radial-gradient(circle, rgba(105,134,150,0.11) 0%, transparent 70%);
+  animation-delay: 8s;
+}
+
+/* ── Main layout (2 kolom) ── */
+.login-layout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  min-height: 100dvh;
+}
+
+/* ── Kolom kiri 60% ── */
+.login-video-col {
+  flex: 0 0 60%;
+  position: relative;
+  overflow: hidden;
+  animation: login-fade-in-slow 0.8s ease both;
+}
+
+/* ── Video wrapper ── */
+.login-video-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 0 24px 24px 0;
+  overflow: hidden;
+  box-shadow: 8px 0 40px rgba(36,60,76,0.12);
+}
+
+/* Video porseni — cover penuh wrapper, object-fit cover agar tidak distorsi */
+.login-video-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Overlay gelap */
+.login-video-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    160deg,
+    rgba(36, 60, 76, 0.72) 0%,
+    rgba(36, 60, 76, 0.45) 50%,
+    rgba(20, 40, 55, 0.70) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+  cursor: default;
+}
+
+/* Blocker — transparent div on top of everything in video col,
+   prevents YouTube hover UI (pause/next/prev) from ever appearing */
+.login-video-blocker {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: auto;
+  cursor: default;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Pastikan wrapper tidak bisa di-interact */
+.login-video-col,
+.login-video-wrapper {
+  pointer-events: none;
+}
+
+.login-video-blocker,
+.login-video-info,
+.login-video-overlay {
+  pointer-events: auto;
+}
+
+/* Overlay info */
+.login-video-info {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 3rem 3.5rem;
+  pointer-events: none;
+  z-index: 20;
+  animation: login-fade-in 1s 0.3s ease both;
+}
+
+.login-video-logo {
+  width: 64px; height: 64px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.login-video-system {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.65);
+  margin-bottom: 0.5rem;
+}
+
+.login-video-school {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.1;
+  margin: 0 0 0.75rem;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+  letter-spacing: -0.01em;
+}
+
+.login-video-tagline {
+  font-size: 1rem;
+  color: rgba(255,255,255,0.75);
+  line-height: 1.6;
+  margin: 0 0 1.75rem;
+  font-style: italic;
+}
+
+.login-video-pills {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.login-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.875rem;
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  color: rgba(255,255,255,0.85);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+/* ── Kolom kanan 40% ── */
+.login-card-col {
+  flex: 0 0 40%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 2rem;
+  animation: login-fade-in 0.6s 0.15s ease both;
+}
+
+/* ── Login Card ── */
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 24px;
+  border: 1px solid rgba(215,226,228,0.8);
+  box-shadow:
+    0 2px 8px rgba(36,60,76,0.05),
+    0 12px 32px rgba(36,60,76,0.08),
+    0 32px 64px rgba(36,60,76,0.06);
+  padding: 3rem 3rem 2.25rem;
+  animation: login-scale-in 0.5s 0.2s ease both;
+  transition: box-shadow 0.2s ease;
+}
+
+.login-card:hover {
+  box-shadow:
+    0 2px 8px rgba(36,60,76,0.06),
+    0 16px 40px rgba(36,60,76,0.11),
+    0 40px 72px rgba(36,60,76,0.08);
+}
+
+[data-theme="dark"] .login-card {
+  background: #1C2F3B;
+  border-color: rgba(52,80,92,0.7);
+  box-shadow:
+    0 2px 8px rgba(0,0,0,0.2),
+    0 12px 32px rgba(0,0,0,0.28),
+    0 32px 64px rgba(0,0,0,0.2);
+}
+
+/* Card header */
+.login-card-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login-card-logo {
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1.25rem;
+}
+
+.login-card-title {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: #243C4C;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+[data-theme="dark"] .login-card-title {
+  color: #F4FCFB;
+}
+
+.login-card-subtitle {
+  font-size: 0.9375rem;
+  color: #61727E;
+  margin: 0;
+  line-height: 1.5;
+}
+
+[data-theme="dark"] .login-card-subtitle {
+  color: #9DB2BC;
+}
+
+/* Form */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+}
+
+/* Error */
+.login-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #FEF2F2;
+  border: 1px solid rgba(220,38,38,0.2);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: #DC2626;
+  font-weight: 500;
+  animation: login-fade-in 0.2s ease both;
+}
+
+[data-theme="dark"] .login-error {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.25);
+  color: #EF4444;
+}
+
+/* Field */
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.login-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #243C4C;
+  letter-spacing: 0.01em;
+}
+
+[data-theme="dark"] .login-label {
+  color: #C8D8DF;
+}
+
+/* Input wrapper */
+.login-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-input-icon {
+  position: absolute;
+  left: 0.875rem;
+  color: #8A9AA4;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  transition: color 0.15s ease;
+}
+
+.login-input-wrap:focus-within .login-input-icon {
+  color: #5289AD;
+}
+
+.login-input {
+  width: 100%;
+  height: 50px;
+  padding: 0 1rem 0 2.75rem;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  color: #243C4C;
+  background: #F8FBFC;
+  border: 1.5px solid #D7E2E4;
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  box-sizing: border-box;
+}
+
+.login-input::placeholder {
+  color: #ACBCBF;
+}
+
+.login-input:focus {
+  border-color: #5289AD;
+  background: #ffffff;
+  box-shadow: 0 0 0 3.5px rgba(82,137,173,0.14);
+}
+
+.login-input:hover:not(:focus):not(:disabled) {
+  border-color: #ACBCBF;
+}
+
+.login-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .login-input {
+  background: #203440;
+  border-color: #35505D;
+  color: #F4FCFB;
+}
+
+[data-theme="dark"] .login-input::placeholder {
+  color: #5A7280;
+}
+
+[data-theme="dark"] .login-input:focus {
+  border-color: #5289AD;
+  background: #243C4C;
+  box-shadow: 0 0 0 3.5px rgba(82,137,173,0.2);
+}
+
+.login-input-password {
+  padding-right: 3rem;
+}
+
+/* Eye toggle */
+.login-eye-btn {
+  position: absolute;
+  right: 0.875rem;
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: #8A9AA4;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: color 0.15s ease;
+}
+
+.login-eye-btn:hover {
+  color: #5289AD;
+}
+
+/* Remember me */
+.login-remember {
+  display: flex;
+  align-items: center;
+}
+
+.login-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0; height: 0;
+}
+
+.login-checkbox-custom {
+  width: 18px; height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid #D7E2E4;
+  background: #F8FBFC;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.login-checkbox:checked + .login-checkbox-custom {
+  background: #5289AD;
+  border-color: #5289AD;
+}
+
+.login-checkbox:checked + .login-checkbox-custom::after {
+  content: '';
+  display: block;
+  width: 5px; height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.login-checkbox:focus-visible + .login-checkbox-custom {
+  outline: 2px solid #5289AD;
+  outline-offset: 2px;
+}
+
+.login-checkbox-text {
+  font-size: 0.875rem;
+  color: #61727E;
+}
+
+[data-theme="dark"] .login-checkbox-text {
+  color: #9DB2BC;
+}
+
+[data-theme="dark"] .login-checkbox-custom {
+  background: #203440;
+  border-color: #35505D;
+}
+
+/* Login button */
+.login-btn {
+  width: 100%;
+  height: 50px;
+  background: linear-gradient(135deg, #5289AD 0%, #437998 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 14px rgba(82,137,173,0.35);
+  letter-spacing: 0.01em;
+  margin-top: 0.25rem;
+}
+
+.login-btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(82,137,173,0.45);
+}
+
+.login-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(82,137,173,0.3);
+}
+
+.login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.login-btn:focus-visible {
+  outline: 2px solid #5289AD;
+  outline-offset: 3px;
+}
+
+/* Spinner */
+.login-spinner {
+  animation: login-spinner 0.75s linear infinite;
+}
+
+/* Card footer */
+.login-card-footer {
+  margin-top: 1.75rem;
+}
+
+.login-footer-divider {
+  height: 1px;
+  background: #EDF3F4;
+  margin-bottom: 1rem;
+}
+
+[data-theme="dark"] .login-footer-divider {
+  background: #314A57;
+}
+
+.login-footer-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #8A9AA4;
+}
+
+.login-footer-dot {
+  color: #ACBCBF;
+}
+
+/* ═══════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════ */
+
+/* Tablet: 50 / 50 */
+@media (max-width: 1024px) {
+  .login-video-col { flex: 0 0 50%; }
+  .login-card-col  { flex: 0 0 50%; padding: 2rem 1.5rem; }
+  .login-card { padding: 2.25rem 2.25rem 1.75rem; }
+}
+
+/* Mobile: 1 kolom, video di atas */
+@media (max-width: 640px) {
+  .login-layout {
+    flex-direction: column;
+  }
+
+  .login-video-col {
+    flex: 0 0 auto;
+    height: 260px;
+  }
+
+  .login-video-wrapper {
+    border-radius: 0 0 20px 20px;
+  }
+
+  .login-video-info {
+    padding: 1.5rem 1.75rem;
+  }
+
+  .login-video-school {
+    font-size: 1.625rem;
+  }
+
+  .login-video-tagline {
+    display: none;
+  }
+
+  .login-card-col {
+    flex: 1;
+    padding: 1.5rem 1rem;
+    align-items: flex-start;
+  }
+
+  .login-card {
+    max-width: 100%;
+    border-radius: 20px;
+    padding: 1.75rem 1.5rem 1.5rem;
+  }
+
+  .login-card-title { font-size: 1.375rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-bg-shape,
+  .login-video-info,
+  .login-card,
+  .login-video-col,
+  .login-card-col {
+    animation: none !important;
+  }
 }

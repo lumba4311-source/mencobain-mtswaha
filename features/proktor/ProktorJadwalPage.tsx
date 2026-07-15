@@ -4,25 +4,24 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/features/auth/AuthProvider';
-import {
-  getStore, createJadwal, updateJadwal, deleteJadwal,
-  bukaJadwal, tutupJadwal, publishJadwal, unpublishJadwal,
-  type CreateJadwalInput,
-} from '@/lib/store';
+type CreateJadwalInput = { id_ujian: string; max_capacity: number; durasi_menit: number; siswa_ids: string[]; };
+import CustomSelect from '@/components/CustomSelect';
 import type { JadwalUjian, Ujian, Kelas, Siswa } from '@/types';
 import ProktorSidebar from './ProktorSidebar';
+import AppTopbar from '@/components/AppTopbar';
+import Toast, { type ToastData } from '@/components/Toast';
 
 type Mode     = 'list' | 'buat' | 'edit';
-type SortKey  = 'nama' | 'status' | 'publikasi' | 'waktu';
+type SortKey  = 'nama' | 'publikasi' | 'waktu';
 type SortDir  = 'asc' | 'desc';
 
 const emptyForm = (): CreateJadwalInput => ({
-  id_ujian: '', ruangan: '', max_capacity: 70,
-  waktu_mulai: '', waktu_selesai: '', siswa_ids: [],
+  id_ujian: '', max_capacity: 70,
+  durasi_menit: 90, siswa_ids: [],
 });
 
 export default function ProktorJadwalPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router   = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mode, setMode]         = useState<Mode>('list');
@@ -41,13 +40,16 @@ export default function ProktorJadwalPage() {
   const [openMenu, setOpenMenu]     = useState<string | null>(null);
   const [confirmMsg, setConfirmMsg] = useState('');
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const [saving, setSaving]         = useState(false);
+  const [toast, setToast]           = useState<ToastData | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user) { router.replace('/login'); return; }
     if (user.role !== 'proktor' && user.role !== 'admin') { router.replace('/login'); return; }
     loadData();
-  }, [user, router]);
+  }, [isLoading, user, router]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -59,15 +61,28 @@ export default function ProktorJadwalPage() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  function loadData() {
-    const s = getStore();
+  async function loadData() {
+    const [jadwalRes, ujianRes, akunRes] = await Promise.all([
+      fetch('/api/jadwal'),
+      fetch('/api/ujian'),
+      fetch('/api/akun'),
+    ]);
+    // E-07: cek res.ok sebelum parse JSON — hindari crash saat API error
+    if (!jadwalRes.ok || !ujianRes.ok || !akunRes.ok) {
+      setToast({ msg: 'Gagal memuat data. Coba muat ulang halaman.', type: 'error' });
+      return;
+    }
+    const jadwals: JadwalUjian[] = await jadwalRes.json();
+    const ujians: Ujian[]        = await ujianRes.json();
+    const akun                   = await akunRes.json();
+
     const map: Record<string, Ujian> = {};
-    s.ujians.forEach(u => { map[u.id] = u; });
+    ujians.forEach(u => { map[u.id] = u; });
     setUjianMap(map);
-    setUjianList([...s.ujians]);
-    setKelasList([...s.kelas]);
-    setSiswaList([...s.siswas]);
-    setJadwalList([...s.jadwalUjians]);
+    setUjianList(ujians);
+    setKelasList(akun.kelas ?? []);
+    setSiswaList(akun.siswas ?? []);
+    setJadwalList(jadwals);
   }
 
   function handleSort(key: SortKey) {
@@ -95,33 +110,24 @@ export default function ProktorJadwalPage() {
     .filter(j => {
       if (!search) return true;
       const ujian = ujianMap[j.id_ujian];
-      return (
-        (ujian?.nama_ujian ?? '').toLowerCase().includes(search.toLowerCase()) ||
-        j.ruangan.toLowerCase().includes(search.toLowerCase())
-      );
+      return (ujian?.nama_ujian ?? '').toLowerCase().includes(search.toLowerCase());
     })
     .sort((a, b) => {
       let v = 0;
       if (sortKey === 'nama')      v = (ujianMap[a.id_ujian]?.nama_ujian ?? '').localeCompare(ujianMap[b.id_ujian]?.nama_ujian ?? '');
-      if (sortKey === 'status')    v = a.status.localeCompare(b.status);
       if (sortKey === 'publikasi') v = a.status_publikasi.localeCompare(b.status_publikasi);
-      if (sortKey === 'waktu')     v = a.waktu_mulai.localeCompare(b.waktu_mulai);
+      // BUG FIX: durasi_menit tidak ada di jadwal_ujians, sort pakai created_at sebagai fallback
+      if (sortKey === 'waktu')     v = new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
       return sortDir === 'asc' ? v : -v;
     });
-
-  function pelaksanaanLabel(j: JadwalUjian) {
-    if (j.status === 'Dibuka')   return { text: '🟢 Berlangsung', color: 'var(--color-success)' };
-    if (j.status === 'Menunggu') return { text: '⏳ Menunggu',     color: 'var(--color-warning)' };
-    return                              { text: '✅ Selesai',       color: 'var(--color-text-muted)' };
-  }
 
   function handleBuat() { setForm(emptyForm()); setEditId(''); setError(''); setMode('buat'); }
 
   function handleEdit(j: JadwalUjian) {
     setForm({
-      id_ujian: j.id_ujian, ruangan: j.ruangan,
+      id_ujian: j.id_ujian,
       max_capacity: j.max_capacity,
-      waktu_mulai: j.waktu_mulai, waktu_selesai: j.waktu_selesai,
+      durasi_menit: j.durasi_menit,
       siswa_ids: [...j.siswa_ids],
     });
     setEditId(j.id); setError(''); setMode('edit'); setOpenMenu(null);
@@ -129,30 +135,50 @@ export default function ProktorJadwalPage() {
 
   function handleDelete(id: string) {
     setOpenMenu(null);
-    confirm('Hapus jadwal ini?', () => { deleteJadwal(id); loadData(); });
-  }
-
-  function handleBuka(id: string) {
-    setOpenMenu(null);
-    if (!user) return;
-    bukaJadwal(id, user.id); loadData();
-  }
-
-  function handleTutup(id: string) {
-    setOpenMenu(null);
-    confirm('Tutup sesi ujian ini? Peserta yang masih mengerjakan akan di-force submit.', () => { tutupJadwal(id); loadData(); });
+    confirm('Hapus jadwal ini? Tindakan ini tidak bisa dibatalkan.', async () => {
+      try {
+        const res = await fetch(`/api/jadwal/${id}`, { method: 'DELETE' });
+        if (!res.ok) { setToast({ msg: 'Gagal menghapus jadwal.', type: 'error' }); return; }
+        setToast({ msg: 'Jadwal berhasil dihapus.', type: 'success' });
+        loadData();
+      } catch {
+        setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+      }
+    });
   }
 
   function handlePublish(id: string) {
     setOpenMenu(null);
-    confirm('Publish jadwal ini? Ujian akan tampil di dashboard siswa.', () => { publishJadwal(id); loadData(); });
+    confirm('Publish jadwal ini? Ujian akan tampil di dashboard siswa.', async () => {
+      try {
+        const res = await fetch(`/api/jadwal/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status_publikasi: 'Published' }),
+        });
+        if (!res.ok) { setToast({ msg: 'Gagal mempublish jadwal.', type: 'error' }); return; }
+        setToast({ msg: 'Jadwal berhasil dipublish.', type: 'success' });
+        loadData();
+      } catch {
+        setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+      }
+    });
   }
 
-  function handleUnpublish(id: string) {
+  async function handleUnpublish(id: string) {
     setOpenMenu(null);
-    const result = unpublishJadwal(id);
-    if (!result.ok) { alert(result.error); return; }
-    loadData();
+    try {
+      const res = await fetch(`/api/jadwal/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status_publikasi: 'Draft' }),
+      });
+      if (!res.ok) { setToast({ msg: 'Gagal mengubah status jadwal.', type: 'error' }); return; }
+      setToast({ msg: 'Jadwal diubah ke Draft.', type: 'success' });
+      loadData();
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+    }
   }
 
   function handleToggleSiswa(siswaId: string) {
@@ -164,33 +190,53 @@ export default function ProktorJadwalPage() {
     }));
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setError('');
-    if (!form.id_ujian)       { setError('Pilih ujian.'); return; }
-    if (!form.ruangan.trim()) { setError('Ruangan wajib diisi.'); return; }
-    if (!form.waktu_mulai)    { setError('Waktu mulai wajib diisi.'); return; }
-    if (!form.waktu_selesai)  { setError('Waktu selesai wajib diisi.'); return; }
-    if (new Date(form.waktu_selesai) <= new Date(form.waktu_mulai)) { setError('Waktu selesai harus setelah waktu mulai.'); return; }
-    // Auto-assign semua siswa
+    if (!form.id_ujian)        { setError('Pilih ujian.'); return; }
+    if (form.durasi_menit < 1) { setError('Durasi minimal 1 menit.'); return; }
     const allSiswaIds = siswaList.map(sw => sw.id);
     const finalForm = { ...form, siswa_ids: allSiswaIds };
-    if (mode === 'buat') createJadwal(finalForm);
-    else updateJadwal(editId, finalForm);
-    loadData(); setMode('list');
+    setSaving(true);
+    try {
+      if (mode === 'buat') {
+        const res = await fetch('/api/jadwal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalForm),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error ?? 'Gagal membuat jadwal.'); return; }
+        setToast({ msg: 'Jadwal berhasil dibuat.', type: 'success' });
+      } else {
+        const res = await fetch(`/api/jadwal/${editId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalForm),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error ?? 'Gagal menyimpan jadwal.'); return; }
+        setToast({ msg: 'Jadwal berhasil diperbarui.', type: 'success' });
+      }
+      loadData(); setMode('list');
+    } catch {
+      setError('Terjadi kesalahan. Coba lagi.');
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const s = getStore();
   const kelasMap: Record<string, string> = {};
-  s.kelas.forEach(k => { kelasMap[k.id] = k.nama_kelas; });
+  kelasList.forEach(k => { kelasMap[k.id] = k.nama_kelas; });
   const filteredSiswa = filterKelas ? siswaList.filter(sw => sw.id_kelas === filterKelas) : siswaList;
 
-  if (!user) return null;
+  if (isLoading || !user) return null;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
-
-      <main style={{ flex: 1, overflow: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
+      <AppTopbar pageLabel="Kelola Jadwal" />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '2px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
@@ -215,7 +261,7 @@ export default function ProktorJadwalPage() {
               {/* Search */}
               <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.75rem' }}>
                 <input
-                  type="text" placeholder="🔍 Cari ujian atau ruangan..."
+                  type="text" placeholder="🔍 Cari ujian..."
                   value={search} onChange={e => setSearch(e.target.value)}
                   style={{ flex: 1, padding: '0.5rem 0.875rem', borderRadius: '0.5rem', border: '2px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem', outline: 'none' }}
                 />
@@ -234,12 +280,10 @@ export default function ProktorJadwalPage() {
                       <thead>
                         <tr style={{ background: 'var(--color-surface-alt)' }}>
                           {[
-                            { key: 'nama',      label: 'Ujian' },
+                            { key: 'nama',      label: 'Nama Ujian' },
                             { key: 'publikasi', label: 'Status' },
-                            { key: 'status',    label: 'Pelaksanaan' },
-                            { key: null,        label: 'Peserta' },
                             { key: null,        label: 'Durasi' },
-                            { key: null,        label: 'Edit' },
+                            { key: null,        label: 'Aksi' },
                           ].map(h => (
                             <th key={h.label}
                               onClick={() => h.key && handleSort(h.key as SortKey)}
@@ -260,18 +304,17 @@ export default function ProktorJadwalPage() {
                       <tbody>
                         {filteredSorted.map((j, i) => {
                           const ujian = ujianMap[j.id_ujian];
-                          const pel   = pelaksanaanLabel(j);
                           const isDraft = j.status_publikasi === 'Draft';
                           return (
                             <tr key={j.id} style={{ borderBottom: i < filteredSorted.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
                               {/* Ujian */}
                               <td style={{ padding: '0.875rem 1rem' }}>
                                 <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>{ujian?.nama_ujian ?? '—'}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.125rem' }}>
-                                  {ujian?.jenis_ujian} · {ujian?.durasi} menit · {j.ruangan}
-                                </div>
+                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.125rem' }}>
+                                   {ujian?.jenis_ujian} · {j.durasi_menit} menit
+                                 </div>
                               </td>
-                              {/* Status Publikasi — tombol toggle */}
+                               {/* Status Publikasi — tombol toggle */}
                               <td style={{ padding: '0.875rem 1rem' }}>
                                 <button
                                   onClick={() => isDraft ? handlePublish(j.id) : handleUnpublish(j.id)}
@@ -286,41 +329,17 @@ export default function ProktorJadwalPage() {
                                   {isDraft ? 'Draft' : 'Published'}
                                 </button>
                               </td>
-                              {/* Pelaksanaan */}
-                              <td style={{ padding: '0.875rem 1rem' }}>
-                                <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: pel.color, whiteSpace: 'nowrap' }}>{pel.text}</span>
-                              </td>
-                              {/* Peserta */}
-                              <td style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 700, color: 'var(--color-text)' }}>
-                                {j.siswa_ids.length}
-                              </td>
-                              {/* Durasi */}
-                              <td style={{ padding: '0.875rem 1rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                                {ujian?.durasi ?? '—'} menit
-                              </td>
-                              {/* Edit tombol langsung */}
-                              <td style={{ padding: '0.875rem 1rem' }}>
-                                <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                                  {j.status === 'Menunggu' && (
-                                    <button className="btn btn-outline btn-sm" onClick={() => handleEdit(j)}>Edit</button>
-                                  )}
-                                  {j.status === 'Menunggu' && (
-                                    <button className="btn btn-success btn-sm" onClick={() => handleBuka(j.id)}>Buka</button>
-                                  )}
-                                  {j.status === 'Dibuka' && (
-                                    <Link href={`/proktor/monitoring?jadwal=${j.id}`} className="btn btn-outline btn-sm">Monitor</Link>
-                                  )}
-                                  {j.status === 'Dibuka' && (
-                                    <button className="btn btn-danger btn-sm" onClick={() => handleTutup(j.id)}>Tutup</button>
-                                  )}
-                                  {j.status === 'Ditutup' && (
-                                    <Link href={`/proktor/hasil?jadwal=${j.id}`} className="btn btn-ghost btn-sm">Hasil</Link>
-                                  )}
-                                  {j.status === 'Menunggu' && (
-                                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(j.id)}>Hapus</button>
-                                  )}
-                                </div>
-                              </td>
+                               {/* Durasi */}
+                               <td style={{ padding: '0.875rem 1rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                                 {j.durasi_menit} menit
+                               </td>
+                               {/* Aksi */}
+                               <td style={{ padding: '0.875rem 1rem' }}>
+                                 <div style={{ display: 'flex', gap: '0.375rem' }}>
+                                   <button className="btn btn-outline btn-sm" onClick={() => handleEdit(j)}>Edit</button>
+                                   <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(j.id)}>Hapus</button>
+                                 </div>
+                               </td>
                             </tr>
                           );
                         })}
@@ -339,41 +358,40 @@ export default function ProktorJadwalPage() {
 
               <div className="form-group">
                 <label className="form-label">Ujian</label>
-                <select className="form-select" value={form.id_ujian} onChange={e => setForm(p => ({ ...p, id_ujian: e.target.value }))} disabled={mode === 'edit'}>
-                  <option value="">— Pilih Ujian —</option>
-                  {ujianList.map(u => <option key={u.id} value={u.id}>{u.nama_ujian} ({u.jenis_ujian})</option>)}
-                </select>
+                <CustomSelect
+                  value={form.id_ujian}
+                  onChange={v => setForm(p => ({ ...p, id_ujian: v }))}
+                  disabled={mode === 'edit'}
+                  options={[
+                    { value: '', label: '— Pilih Ujian —' },
+                    ...ujianList.map(u => ({ value: u.id, label: u.nama_ujian })),
+                  ]}
+                />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Ruangan</label>
-                <input className="form-input" type="text" placeholder="Contoh: Lab Komputer 1" value={form.ruangan} onChange={e => setForm(p => ({ ...p, ruangan: e.target.value }))} />
+                <label className="form-label">Durasi Pengerjaan (menit)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min={1} max={300}
+                  value={form.durasi_menit === 0 ? '' : form.durasi_menit}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setForm(p => ({ ...p, durasi_menit: val === '' ? 0 : parseInt(val, 10) || 0 }));
+                  }}
+                />
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Waktu Mulai</label>
-                  <input className="form-input" type="datetime-local" value={form.waktu_mulai ? form.waktu_mulai.slice(0, 16) : ''} onChange={e => setForm(p => ({ ...p, waktu_mulai: new Date(e.target.value).toISOString() }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Waktu Selesai</label>
-                  <input className="form-input" type="datetime-local" value={form.waktu_selesai ? form.waktu_selesai.slice(0, 16) : ''} onChange={e => setForm(p => ({ ...p, waktu_selesai: new Date(e.target.value).toISOString() }))} />
-                </div>
-              </div>
-
-              {form.waktu_mulai && form.waktu_selesai && new Date(form.waktu_selesai) > new Date(form.waktu_mulai) && (
-                <div style={{ padding: '0.625rem 0.875rem', background: 'var(--color-primary-subtle)', borderRadius: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-primary)', fontWeight: 600 }}>
-                  Durasi: {Math.round((new Date(form.waktu_selesai).getTime() - new Date(form.waktu_mulai).getTime()) / 60000)} menit
-                </div>
-              )}
 
               <div style={{ padding: '0.625rem 0.875rem', background: 'var(--color-surface-alt)', borderRadius: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                Peserta: semua siswa ({siswaList.length} siswa) akan otomatis di-assign.
+                Semua siswa ({siswaList.length} siswa) akan otomatis di-assign sebagai peserta.
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => setMode('list')}>Batal</button>
-                <button className="btn btn-primary" onClick={handleSubmit}>{mode === 'buat' ? 'Buat Jadwal' : 'Simpan Perubahan'}</button>
+                <button className="btn btn-ghost" onClick={() => setMode('list')} disabled={saving}>Batal</button>
+                <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
+                  {saving ? 'Menyimpan...' : mode === 'buat' ? 'Buat Jadwal' : 'Simpan Perubahan'}
+                </button>
               </div>
             </div>
           )}
@@ -392,6 +410,9 @@ export default function ProktorJadwalPage() {
           </div>
         </div>
       )}
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
+      </div>
     </div>
   );
 }

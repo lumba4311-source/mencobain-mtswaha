@@ -6,17 +6,14 @@ export type Role = 'admin' | 'proktor' | 'guru' | 'siswa';
 export type StatusAkun = 'aktif' | 'nonaktif';
 export type JenisUjian = 'UMBK' | 'UAS' | 'PAS' | 'PTS' | 'TRYOUT' | 'LATIHAN';
 export type JawabanBenar = 'A' | 'B' | 'C' | 'D' | 'E';
-export type StatusJadwal    = 'Menunggu' | 'Dibuka' | 'Ditutup';
 export type StatusPublikasi = 'Draft' | 'Published';
 export type StatusSession = 'belum_mulai' | 'berlangsung' | 'selesai' | 'force_submit';
 export type StatusSoal = 'belum' | 'sudah' | 'ragu';
 
-// ── Master Data ──────────────────────────────────────────────
-
 export interface User {
   id: string;
   username: string;
-  password: string; // plain text for mock
+  password?: string; // plaintext — kolom opsional di profiles, perlu ditambah di DB
   role: Role;
   status: StatusAkun;
   nama: string;
@@ -27,12 +24,6 @@ export interface Kelas {
   nama_kelas: string;
   tingkat: number;
   tahun_ajaran: string;
-}
-
-export interface MataPelajaran {
-  id: string;
-  nama_mapel: string;
-  kelompok: 'umum' | 'pesantren';
 }
 
 export interface Siswa {
@@ -48,7 +39,6 @@ export interface Guru {
   nip: string;
   nama: string;
   id_user: string;
-  mapel_ids: string[]; // relasi guru_mapel
 }
 
 // ── Konten Ujian ─────────────────────────────────────────────
@@ -56,15 +46,14 @@ export interface Guru {
 export interface Ujian {
   id: string;
   nama_ujian: string;
-  id_mapel: string;
   id_guru: string;
   jenis_ujian: JenisUjian;
-  durasi: number; // menit
-  nilai_kkm: number;
+  durasi: number;
   acak_soal: boolean;
   acak_opsi: boolean;
   tampil_hasil: boolean;
-  kelas_ids: string[]; // relasi ujian_kelas
+  kelas_ids: string[];       // di-flatten dari tabel ujian_kelas oleh API
+  soal_count?: number;       // dihitung dari soals oleh API
   created_at: string;
 }
 
@@ -76,7 +65,6 @@ export interface Soal {
   opsi_b: string;
   opsi_c: string;
   opsi_d: string;
-  opsi_e: string;
   jawaban_benar: JawabanBenar;
   bobot: number;
   gambar_url?: string;
@@ -88,13 +76,13 @@ export interface Soal {
 export interface JadwalUjian {
   id: string;
   id_ujian: string;
-  ruangan: string;
   max_capacity: number;
-  waktu_mulai: string;
-  waktu_selesai: string;
-  status: StatusJadwal;
+  waktu_mulai?: string;      // tidak lagi digunakan
+  waktu_selesai?: string;    // tidak lagi digunakan
+  durasi_menit: number;      // durasi pengerjaan dalam menit
   status_publikasi: StatusPublikasi;
-  siswa_ids: string[]; // peserta yang di-assign
+  siswa_ids: string[];
+  created_at?: string;
 }
 
 export interface SessionUjian {

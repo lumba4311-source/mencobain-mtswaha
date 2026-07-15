@@ -3,39 +3,45 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { getStore, forceSubmitSession, autoTimeoutSweep } from '@/lib/store';
-import type { JadwalUjian, Ujian, Siswa } from '@/types';
+import CustomSelect from '@/components/CustomSelect';
+import type { JadwalUjian, Ujian, Siswa, Kelas } from '@/types';
 import ProktorSidebar from './ProktorSidebar';
+import AppTopbar from '@/components/AppTopbar';
+import Toast, { type ToastData } from '@/components/Toast';
 
 type RowStatus = 'Belum Ujian' | 'Berlangsung' | 'Selesai';
 
 interface MonitorRow {
   siswa: Siswa;
   kelas: string;
-  durasi: number; // menit ujian
+  durasiBatas: number;
+  sessionStartedAt?: string;
+  sessionDeadline?: string;  // deadline dari server — single source of truth
   status: RowStatus;
   sessionId?: string;
-  progress: number; // persen
+  progress: number;
   jumlahDijawab: number;
   totalSoal: number;
 }
 
 export default function ProktorMonitoringPage() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jadwalList, setJadwalList] = useState<JadwalUjian[]>([]);
   const [ujianMap, setUjianMap]     = useState<Record<string, Ujian>>({});
+  const [kelasMap, setKelasMap]     = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState(searchParams.get('jadwal') ?? '');
   const [rows, setRows]             = useState<MonitorRow[]>([]);
   const [now, setNow]               = useState(new Date());
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user) { router.replace('/login'); return; }
     if (user.role !== 'proktor' && user.role !== 'admin') { router.replace('/login'); return; }
     loadBase();
-  }, [user, router]);
+  }, [isLoading, user, router]);
 
   // Tick tiap detik
   useEffect(() => {
@@ -43,67 +49,115 @@ export default function ProktorMonitoringPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Auto-refresh tiap 5 detik
+  async function loadBase() {
+    const [jadwalRes, ujianRes, akunRes] = await Promise.all([
+      fetch('/api/jadwal'),
+      fetch('/api/ujian'),
+      fetch('/api/akun'),
+    ]);
+    // E-05: cek res.ok sebelum parse JSON — hindari crash saat API error
+    if (!jadwalRes.ok || !ujianRes.ok || !akunRes.ok) {
+      console.error('Gagal memuat data monitoring: salah satu API error');
+      return;
+    }
+    const ujians: Ujian[]        = await ujianRes.json();
+    const jadwals: JadwalUjian[] = await jadwalRes.json();
+    const akun                   = await akunRes.json();
+    const uMap: Record<string, Ujian> = {};
+    ujians.forEach(u => { uMap[u.id] = u; });
+    setUjianMap(uMap);
+    setJadwalList(jadwals);
+    // BUG FIX: load kelasMap agar nama kelas bisa ditampilkan
+    const kMap: Record<string, string> = {};
+    (akun.kelas ?? []).forEach((k: Kelas) => { kMap[k.id] = k.nama_kelas; });
+    setKelasMap(kMap);
+  }
+
+  const refresh = useCallback(async () => {
+    if (!selectedId) return;
+    // E-04: cek res.ok sebelum parse JSON — circuit breaker agar interval tidak crash diam-diam
+    try {
+      const res = await fetch(`/api/monitoring?jadwalId=${selectedId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+
+      const built: MonitorRow[] = data.map((item: {
+        siswa: Siswa;
+        session?: { id: string; started_at: string; status: string; deadline: string };
+        jumlah_dijawab: number;
+        progress_persen: number;
+        status: string;
+        durasiBatas: number;
+        kelas_nama?: string;
+      }) => {
+        let status: RowStatus = 'Belum Ujian';
+        if (item.session) {
+          status = item.session.status === 'berlangsung' ? 'Berlangsung' : 'Selesai';
+        }
+        return {
+          siswa: item.siswa,
+          kelas: kelasMap[item.siswa.id_kelas] ?? item.siswa.id_kelas,
+          durasiBatas: item.durasiBatas,
+          sessionStartedAt: item.session?.started_at,
+          sessionDeadline: item.session?.deadline,
+          status,
+          sessionId: item.session?.id,
+          progress: item.progress_persen,
+          jumlahDijawab: item.jumlah_dijawab,
+          totalSoal: 0,
+        };
+      });
+      setRows(built);
+    } catch {
+      // Network error — biarkan interval coba lagi berikutnya
+    }
+  }, [selectedId]);
+  // Auto-refresh tiap 10 detik — P4: kurangi beban DB dari 12 req/menit ke 6 req/menit
   useEffect(() => {
     if (!selectedId) return;
     refresh();
-    const t = setInterval(refresh, 5000);
+    const t = setInterval(refresh, 10_000);
     return () => clearInterval(t);
-  }, [selectedId]);
+  }, [selectedId, refresh]);
 
-  function loadBase() {
-    const s = getStore();
-    const uMap: Record<string, Ujian> = {};
-    s.ujians.forEach(u => { uMap[u.id] = u; });
-    setUjianMap(uMap);
-    setJadwalList([...s.jadwalUjians]);
+  async function handleForce(sessionId: string, namaSiswa: string) {
+    setForceConfirm({ sessionId, namaSiswa });
   }
 
-  const refresh = useCallback(() => {
-    autoTimeoutSweep();
-    if (!selectedId) return;
-    const s = getStore();
-    const jadwal = s.jadwalUjians.find(j => j.id === selectedId);
-    if (!jadwal) return;
-    const ujian = s.ujians.find(u => u.id === jadwal.id_ujian);
-    const durasi = ujian?.durasi ?? 0;
-    const totalSoal = ujian ? s.soals.filter(sq => sq.id_ujian === ujian.id).length : 0;
-    const kelasMap: Record<string, string> = {};
-    s.kelas.forEach(k => { kelasMap[k.id] = k.nama_kelas; });
-
-    const built: MonitorRow[] = jadwal.siswa_ids.map(sid => {
-      const siswa = s.siswas.find(sw => sw.id === sid);
-      if (!siswa) return null;
-      const session = s.sessions.find(ses => ses.id_jadwal === selectedId && ses.id_siswa === sid);
-      let status: RowStatus = 'Belum Ujian';
-      if (session) {
-        if (session.status === 'berlangsung') status = 'Berlangsung';
-        else status = 'Selesai';
+  async function doForceSubmit() {
+    if (!forceConfirm) return;
+    setForceLoading(true);
+    try {
+      const res = await fetch('/api/monitoring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: forceConfirm.sessionId }),
+      });
+      if (!res.ok) {
+        setToast({ msg: 'Gagal melakukan force submit. Coba lagi.', type: 'error' });
+        return;
       }
-      const jumlahDijawab = session
-        ? s.jawabans.filter(j => j.id_session === session.id && j.jawaban_siswa !== null).length
-        : 0;
-      const progress = totalSoal > 0 ? Math.round((jumlahDijawab / totalSoal) * 100) : 0;
-      return {
-        siswa,
-        kelas: kelasMap[siswa.id_kelas] ?? '—',
-        durasi,
-        status,
-        sessionId: session?.id,
-        progress,
-        jumlahDijawab,
-        totalSoal,
-      } as MonitorRow;
-    }).filter(Boolean) as MonitorRow[];
-
-    setRows(built);
-    loadBase();
-  }, [selectedId]);
-
-  function handleForce(sessionId: string) {
-    forceSubmitSession(sessionId);
-    refresh();
+      setForceSuccess(`Jawaban ${forceConfirm.namaSiswa} berhasil dikumpulkan.`);
+      setToast({ msg: `Jawaban ${forceConfirm.namaSiswa} berhasil dikumpulkan.`, type: 'success' });
+      setTimeout(() => setForceSuccess(''), 4000);
+      refresh();
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+    } finally {
+      setForceLoading(false);
+      setForceConfirm(null);
+    }
   }
+
+  const [search, setSearch]         = useState('');
+  const [sortKey, setSortKey]       = useState<'kelas' | 'nama' | 'status'>('kelas');
+  const [sortAsc, setSortAsc]       = useState(true);
+  const [filterStatus, setFilterStatus] = useState<RowStatus | ''>('');
+  const [forceConfirm, setForceConfirm] = useState<{ sessionId: string; namaSiswa: string } | null>(null);
+  const [forceLoading, setForceLoading] = useState(false);
+  const [forceSuccess, setForceSuccess] = useState<string>('');
+  const [toast, setToast]           = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
   const selectedJadwal = jadwalList.find(j => j.id === selectedId);
   const selectedUjian  = selectedJadwal ? ujianMap[selectedJadwal.id_ujian] : null;
@@ -113,19 +167,41 @@ export default function ProktorMonitoringPage() {
   const berlangsung    = rows.filter(r => r.status === 'Berlangsung').length;
   const selesai        = rows.filter(r => r.status === 'Selesai').length;
 
-  function statusColor(s: RowStatus) {
-    if (s === 'Berlangsung') return 'var(--color-warning)';
-    if (s === 'Selesai')     return 'var(--color-success)';
-    return 'var(--color-text-muted)';
+  const STATUS_ORDER: Record<RowStatus, number> = { 'Berlangsung': 0, 'Belum Ujian': 1, 'Selesai': 2 };
+
+  const displayedRows = rows
+    .filter(r => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || r.siswa.nama.toLowerCase().includes(q) || r.kelas.toLowerCase().includes(q);
+      const matchStatus = !filterStatus || r.status === filterStatus;
+      return matchSearch && matchStatus;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'kelas') cmp = a.kelas.localeCompare(b.kelas);
+      else if (sortKey === 'nama') cmp = a.siswa.nama.localeCompare(b.siswa.nama);
+      else if (sortKey === 'status') cmp = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+      return sortAsc ? cmp : -cmp;
+    });
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortAsc(p => !p);
+    else { setSortKey(key); setSortAsc(true); }
   }
 
-  if (!user) return null;
+  function SortIcon({ k }: { k: typeof sortKey }) {
+    if (sortKey !== k) return <span style={{ opacity: 0.3, marginLeft: 4 }}>↕</span>;
+    return <span style={{ marginLeft: 4 }}>{sortAsc ? '↑' : '↓'}</span>;
+  }
+
+  if (isLoading || !user) return null;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
-
-      <main style={{ flex: 1, overflow: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
+      <AppTopbar pageLabel="Monitoring Real-Time" />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
         <div style={{
           padding: '1.25rem 1.5rem',
@@ -137,28 +213,20 @@ export default function ProktorMonitoringPage() {
             <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-text)' }}>Monitoring Real-Time</h1>
             {selectedJadwal && selectedUjian && (
               <p style={{ margin: '0.125rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                {selectedUjian.nama_ujian} · {selectedJadwal.ruangan}
+                {selectedUjian.nama_ujian}
               </p>
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <select
+            <CustomSelect
               value={selectedId}
-              onChange={e => setSelectedId(e.target.value)}
-              style={{
-                padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-                border: '2px solid var(--color-border)',
-                background: 'var(--color-surface)', color: 'var(--color-text)',
-                fontSize: '0.875rem', minWidth: 240,
-              }}
-            >
-              <option value="">— Pilih Jadwal —</option>
-              {jadwalList.map(j => (
-                <option key={j.id} value={j.id}>
-                  {ujianMap[j.id_ujian]?.nama_ujian ?? j.id} [{j.status}]
-                </option>
-              ))}
-            </select>
+              onChange={v => setSelectedId(v)}
+              style={{ minWidth: 240 }}
+              options={[
+                { value: '', label: '— Pilih Jadwal —' },
+                ...jadwalList.map(j => ({ value: j.id, label: `${ujianMap[j.id_ujian]?.nama_ujian ?? j.id} [${j.status_publikasi}]` })),
+              ]}
+            />
             <button
               onClick={refresh}
               style={{
@@ -198,71 +266,146 @@ export default function ProktorMonitoringPage() {
                 ))}
               </div>
 
+              {/* Search & Filter */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="🔍 Cari nama, NIS, atau kelas..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ flex: 1, minWidth: 200 }}
+                />
+                <CustomSelect
+                  value={filterStatus}
+                  onChange={v => setFilterStatus(v as RowStatus | '')}
+                  options={[
+                    { value: '', label: 'Semua Status' },
+                    { value: 'Berlangsung', label: 'Berlangsung' },
+                    { value: 'Belum Ujian', label: 'Belum Ujian' },
+                    { value: 'Selesai', label: 'Selesai' },
+                  ]}
+                />
+                {(search || filterStatus) && (
+                  <button
+                    onClick={() => { setSearch(''); setFilterStatus(''); }}
+                    style={{
+                      padding: '0.5rem 0.875rem', borderRadius: '0.5rem',
+                      border: '2px solid var(--color-border)',
+                      background: 'var(--color-surface)', color: 'var(--color-text-muted)',
+                      fontSize: '0.875rem', cursor: 'pointer',
+                    }}
+                  >✕ Reset</button>
+                )}
+              </div>
+
               {/* Tabel */}
               <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: 'var(--color-surface-alt)' }}>
-                        {['Kelas', 'Nama', 'Durasi', 'Status', 'Aksi'].map(h => (
-                          <th key={h} style={{
-                            padding: '0.625rem 1rem', textAlign: 'left',
-                            fontSize: '0.75rem', fontWeight: 700,
-                            color: 'var(--color-text-muted)', textTransform: 'uppercase',
-                            letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)',
-                            whiteSpace: 'nowrap',
-                          }}>{h}</th>
+                        {([
+                          { label: 'Kelas', key: 'kelas' },
+                          { label: 'Nama',  key: 'nama'  },
+                          { label: 'Status',key: 'status'},
+                          { label: 'Aksi',  key: null    },
+                        ] as { label: string; key: typeof sortKey | null }[]).map(h => (
+                          <th
+                            key={h.label}
+                            onClick={h.key ? () => toggleSort(h.key!) : undefined}
+                            style={{
+                              padding: '0.625rem 1rem', textAlign: 'left',
+                              fontSize: '0.75rem', fontWeight: 700,
+                              color: 'var(--color-text-muted)', textTransform: 'uppercase',
+                              letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)',
+                              whiteSpace: 'nowrap',
+                              cursor: h.key ? 'pointer' : 'default',
+                              userSelect: 'none',
+                            }}
+                          >
+                            {h.label}{h.key && <SortIcon k={h.key} />}
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row, idx) => (
-                        <tr key={row.siswa.id} style={{ borderBottom: idx < rows.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                      {displayedRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                            Tidak ada data yang cocok.
+                          </td>
+                        </tr>
+                      ) : displayedRows.map((row, idx) => (
+                        <tr key={row.siswa.id} style={{ borderBottom: idx < displayedRows.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
                           {/* Kelas */}
                           <td style={{ padding: '0.75rem 1rem' }}>
                             <span style={{
                               padding: '0.125rem 0.5rem', borderRadius: '0.25rem',
                               background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)',
                               fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-text)',
-                            }}>{row.kelas}</span>
+                            }}>
+                              {/* BUG FIX: tampilkan nama kelas dari kelasMap bukan raw id_kelas */}
+                              {kelasMap[row.kelas] ?? row.kelas}
+                            </span>
                           </td>
                           {/* Nama */}
                           <td style={{ padding: '0.75rem 1rem' }}>
                             <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>{row.siswa.nama}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{row.siswa.nis}</div>
                           </td>
-                          {/* Durasi */}
-                          <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                            {row.durasi} menit
-                          </td>
-                          {/* Status */}
-                          <td style={{ padding: '0.75rem 1rem' }}>
-                            <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: statusColor(row.status) }}>
-                              {row.status}
-                            </span>
-                            {row.status === 'Berlangsung' && (
-                              <div style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <div style={{ width: 80, height: 6, borderRadius: 3, background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', width: `${row.progress}%`, background: 'var(--color-warning)', borderRadius: 3 }} />
-                                </div>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{row.jumlahDijawab}/{row.totalSoal}</span>
-                              </div>
-                            )}
-                          </td>
-                          {/* Aksi — Force Submit hanya saat Berlangsung */}
-                          <td style={{ padding: '0.75rem 1rem' }}>
-                            {row.status === 'Berlangsung' && row.sessionId && (
-                              <button
-                                onClick={() => handleForce(row.sessionId!)}
-                                style={{
-                                  padding: '0.375rem 0.75rem', borderRadius: '0.375rem',
-                                  background: 'var(--color-danger)', border: 'none',
-                                  color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >Force Submit</button>
-                            )}
-                          </td>
+                           {/* Status — Belum Mulai / countdown / Selesai */}
+                           <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap' }}>
+                             {row.status === 'Belum Ujian' && (
+                               <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                                 Belum Mulai
+                               </span>
+                             )}
+                             {row.status === 'Selesai' && (
+                               <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-success)' }}>
+                                 Selesai
+                               </span>
+                             )}
+                             {row.status === 'Berlangsung' && (() => {
+                               if (!row.sessionDeadline) return (
+                                 <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-warning)' }}>Berlangsung</span>
+                               );
+                               // Gunakan deadline sebagai single source of truth — sama persis dengan ExamPage
+                                const sisaSec = Math.max(0, Math.floor((new Date(row.sessionDeadline).getTime() - now.getTime()) / 1000));
+                                const hh = Math.floor(sisaSec / 3600);
+                                const mm = Math.floor((sisaSec % 3600) / 60).toString().padStart(2, '0');
+                                const ss = (sisaSec % 60).toString().padStart(2, '0');
+                                const timerStr = hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+                                const isUrgent = sisaSec < 300; // < 5 menit
+                                return (
+                                  <div>
+                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: isUrgent ? 'var(--color-danger)' : 'var(--color-warning)' }}>
+                                      {timerStr} tersisa
+                                   </span>
+                                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                     <div style={{ width: 72, height: 5, borderRadius: 3, background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                                       <div style={{ height: '100%', width: `${row.progress}%`, background: 'var(--color-warning)', borderRadius: 3 }} />
+                                     </div>
+                                     <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>{row.jumlahDijawab}/{row.totalSoal}</span>
+                                   </div>
+                                 </div>
+                               );
+                             })()}
+                           </td>
+                           {/* Aksi — Force Submit hanya saat Berlangsung */}
+                           <td style={{ padding: '0.75rem 1rem' }}>
+                             {row.status === 'Berlangsung' && row.sessionId && (
+                               <button
+                                 onClick={() => handleForce(row.sessionId!, row.siswa.nama)}
+                                 disabled={forceLoading}
+                                 style={{
+                                   padding: '0.375rem 0.75rem', borderRadius: '0.375rem',
+                                   background: 'var(--color-danger)', border: 'none',
+                                   color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                                   whiteSpace: 'nowrap', opacity: forceLoading ? 0.6 : 1,
+                                 }}
+                               >Force Submit</button>
+                             )}
+                           </td>
                         </tr>
                       ))}
                     </tbody>
@@ -276,6 +419,74 @@ export default function ProktorMonitoringPage() {
           )}
         </div>
       </main>
+      </div>
+
+      {/* Notifikasi sukses force submit */}
+      {forceSuccess && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 300,
+          background: 'var(--color-success)', color: '#fff',
+          padding: '0.75rem 1.25rem', borderRadius: '0.625rem',
+          fontSize: '0.875rem', fontWeight: 600,
+          boxShadow: 'var(--shadow-lg)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20,6 9,17 4,12"/>
+          </svg>
+          {forceSuccess}
+        </div>
+      )}
+
+      {/* Dialog konfirmasi force submit */}
+      {forceConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400 }}>
+          <div style={{
+            background: 'var(--color-surface)', border: '2px solid var(--color-border)',
+            borderRadius: '0.75rem', padding: '1.5rem', width: 380, boxShadow: 'var(--shadow-xl)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '0.75rem' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text)' }}>Konfirmasi Force Submit</span>
+            </div>
+            <p style={{ margin: '0 0 1.25rem', fontSize: '0.9rem', color: 'var(--color-text)', lineHeight: 1.6 }}>
+              Kamu akan mengakhiri ujian <strong>{forceConfirm.namaSiswa}</strong> secara paksa.<br/>
+              Seluruh jawaban yang telah tersimpan akan dikumpulkan. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setForceConfirm(null)}
+                disabled={forceLoading}
+              >Batal</button>
+              <button
+                className="btn btn-danger"
+                onClick={doForceSubmit}
+                disabled={forceLoading}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'var(--color-danger)', color: '#fff',
+                  border: 'none', padding: '0.5rem 1rem', borderRadius: '0.5rem',
+                  fontWeight: 600, cursor: forceLoading ? 'not-allowed' : 'pointer',
+                  opacity: forceLoading ? 0.7 : 1,
+                }}
+              >
+                {forceLoading && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                )}
+                {forceLoading ? 'Memproses...' : 'Ya, Force Submit'}
+              </button>
+            </div>
+          </div>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

@@ -1,51 +1,84 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { getStore } from '@/lib/store';
+import Toast, { type ToastData } from '@/components/Toast';
 import type { Ujian } from '@/types';
 
+interface UjianWithSoalCount extends Ujian { soal_count: number; }
+
 export default function GuruDashboard() {
-  const { user, guru, logout } = useAuth();
+  const { user, guru, logout, isLoading } = useAuth();
   const router = useRouter();
-  const [ujianList, setUjianList] = useState<Ujian[]>([]);
+  const [ujianList, setUjianList] = useState<UjianWithSoalCount[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
+
+  // Confirm modal state
+  const [confirmTarget, setConfirmTarget] = useState<UjianWithSoalCount | null>(null);
+
+  const doDeleteUjian = useCallback(async (ujian: UjianWithSoalCount) => {
+    setConfirmTarget(null);
+    setDeletingId(ujian.id);
+    try {
+      const res = await fetch(`/api/ujian/${ujian.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        setToast({ msg: data.error ?? 'Gagal menghapus ujian.', type: 'error' });
+        return;
+      }
+      setUjianList(prev => prev.filter(u => u.id !== ujian.id));
+      setToast({ msg: `Ujian "${ujian.nama_ujian}" berhasil dihapus.`, type: 'success' });
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+    } finally {
+      setDeletingId(null);
+    }
+  }, []);
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user || user.role !== 'guru' || !guru) {
       router.replace('/login');
       return;
     }
-    const store = getStore();
-    const myUjian = store.ujians.filter(u => u.id_guru === guru.id);
-    setUjianList(myUjian);
-  }, [user, guru, router]);
+    fetch(`/api/ujian?guruId=${guru.id}`)
+      .then(async r => {
+        // D-04: cek res.ok sebelum parse JSON
+        if (!r.ok) { console.error('Gagal memuat daftar ujian guru'); return; }
+        return r.json();
+      })
+      .then(data => { if (data) setUjianList(data ?? []); })
+      .catch(console.error);
+  }, [isLoading, user, guru, router]);
 
-  if (!user || !guru) return null;
-
-  const store = getStore();
-  const mapelMap: Record<string, string> = {};
-  store.mataPelajaran.forEach(m => { mapelMap[m.id] = m.nama_mapel; });
+  if (isLoading || !user || !guru) return null;
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
       <header className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>
-            </svg>
-          </div>
-          <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-text)' }}>E-CBT MTS WAHA</span>
-          <span style={{ color: 'var(--color-border)', fontSize: '1rem' }}>|</span>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Dashboard Guru</span>
+        <div className="topbar-left">
+          <img src="/favicon.ico" alt="Logo MTS WAHA" width={28} height={28} style={{ objectFit: 'contain', flexShrink: 0 }} />
+          <span className="topbar-appname">E-CBT MTS WAHA</span>
+          <div className="topbar-divider" aria-hidden="true" />
+          <span className="topbar-page-label">Dashboard Guru</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{user.nama}</span>
+        <div className="topbar-center">
           <ThemeToggle />
-          <button className="btn btn-ghost btn-sm" onClick={() => { logout(); router.replace('/login'); }}>Keluar</button>
+        </div>
+        <div className="topbar-right">
+          <div className="topbar-user">
+            <div className="topbar-avatar">{user.nama?.charAt(0)?.toUpperCase() ?? 'G'}</div>
+            <span className="topbar-username">{user.nama}</span>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={async () => { await logout(); router.replace('/login'); }}
+            aria-label="Keluar"
+          >Keluar</button>
         </div>
       </header>
 
@@ -58,7 +91,6 @@ export default function GuruDashboard() {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>{guru.nama}</div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>NIP: {guru.nip}</div>
           </div>
           <span className="badge badge-secondary">Guru</span>
         </div>
@@ -83,10 +115,7 @@ export default function GuruDashboard() {
                 <thead>
                   <tr>
                     <th>Nama Ujian</th>
-                    <th>Mata Pelajaran</th>
-                    <th>Jenis</th>
                     <th>Durasi</th>
-                    <th>KKM</th>
                     <th>Jumlah Soal</th>
                     <th>Dibuat</th>
                     <th>Aksi</th>
@@ -94,24 +123,31 @@ export default function GuruDashboard() {
                 </thead>
                 <tbody>
                   {ujianList.map(ujian => {
-                    const soalCount = store.soals.filter(s => s.id_ujian === ujian.id).length;
+                    const soalCount = ujian.soal_count ?? 0;
                     return (
                       <tr key={ujian.id}>
                         <td style={{ fontWeight: 500 }}>{ujian.nama_ujian}</td>
-                        <td>{mapelMap[ujian.id_mapel] ?? '-'}</td>
-                        <td><span className="badge badge-info">{ujian.jenis_ujian}</span></td>
                         <td>{ujian.durasi} menit</td>
-                        <td>{ujian.nilai_kkm}</td>
                         <td style={{ fontWeight: 600, color: 'var(--color-primary)' }}>{soalCount}</td>
                         <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                           {new Date(ujian.created_at).toLocaleDateString('id-ID')}
                         </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '0.375rem' }}>
+                         <td>
+                          <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                             <Link href={`/guru/soal?ujian=${ujian.id}`} className="btn btn-outline btn-sm">
-                              Kelola Soal
+                              Edit Soal
                             </Link>
-                            <Link href={`/guru/ujian/edit?ujian=${ujian.id}`} className="btn btn-ghost btn-sm">Edit</Link>
+                            <Link href={`/guru/ujian/edit?ujian=${ujian.id}`} className="btn btn-outline btn-sm">
+                              Edit Ujian
+                            </Link>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--color-danger)' }}
+                              onClick={() => setConfirmTarget(ujian)}
+                              disabled={deletingId === ujian.id}
+                            >
+                              {deletingId === ujian.id ? 'Menghapus...' : 'Hapus'}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -123,6 +159,33 @@ export default function GuruDashboard() {
           )}
         </section>
       </main>
+
+      {/* Confirm modal hapus ujian */}
+      {confirmTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 380, maxWidth: '90vw' }}>
+            <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Hapus Ujian</h2>
+            <p style={{ margin: '0 0 0.5rem', fontSize: '0.9375rem', color: 'var(--color-text)', lineHeight: 1.5 }}>
+              Hapus ujian <strong>{confirmTarget.nama_ujian}</strong>?
+            </p>
+            <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+              Semua soal di ujian ini akan ikut terhapus. Tindakan ini tidak bisa dibatalkan.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setConfirmTarget(null)}>Batal</button>
+              <button
+                className="btn btn-sm"
+                style={{ background: 'var(--color-danger)', color: '#fff', border: 'none', fontWeight: 600, padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}
+                onClick={() => doDeleteUjian(confirmTarget)}
+              >
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

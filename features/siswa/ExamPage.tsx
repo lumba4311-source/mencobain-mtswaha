@@ -4,16 +4,12 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import {
-  getStore, getSoalsByUjian, getSessionBySiswaJadwal,
-  createSession, upsertJawaban, submitSession,
-} from '@/lib/store';
-import type { Soal, SessionUjian, Jawaban, Nilai, JawabanBenar } from '@/types';
+import type { Soal, SessionUjian, Jawaban, JawabanBenar, JadwalUjian, Ujian } from '@/types';
 
 type StatusSoal = 'belum' | 'sudah' | 'ragu';
 
 export default function ExamPage() {
-  const { user, siswa } = useAuth();
+  const { user, siswa, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const jadwalId = searchParams.get('jadwal') ?? '';
@@ -24,23 +20,68 @@ export default function ExamPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [submitted, setSubmitted] = useState(false);
-  const [result, setResult] = useState<Nilai | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [phase, setPhase] = useState<'confirm' | 'exam' | 'result'>('confirm');
+  const [emptyWarning, setEmptyWarning] = useState('');
+  const [phase, setPhase] = useState<'confirm' | 'exam'>('confirm');
   const [startError, setStartError] = useState('');
+  const [startLoading, setStartLoading] = useState(false);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [jadwalInfo, setJadwalInfo] = useState<JadwalUjian | null>(null);
+  const [ujianInfo, setUjianInfo] = useState<Ujian | null>(null);
+  const [notify, setNotify] = useState<{ msg: string; type: 'warning' | 'info' } | null>(null);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionRef   = useRef<SessionUjian | null>(null);
+  const timeLeftRef  = useRef(0);
 
-  // Guard
+  // Sync refs
+  useEffect(() => { sessionRef.current = session; }, [session]);
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+
+  // Load jadwal + ujian info for confirm screen
   useEffect(() => {
+    if (!jadwalId) return;
+    fetch(`/api/jadwal/${jadwalId}`)
+      .then(r => r.json())
+      .then((j: JadwalUjian & { ujians?: Ujian }) => {
+        setJadwalInfo(j);
+        // Supabase join mengembalikan field 'ujians' (plural), bukan 'ujian'
+        if (j.ujians) setUjianInfo(j.ujians);
+        else if (j.id_ujian) {
+          fetch(`/api/ujian/${j.id_ujian}`).then(r => r.json()).then(setUjianInfo);
+        }
+      })
+      .catch(console.error);
+  }, [jadwalId]);
+
+  // Auto-resume session berlangsung saat mount (refresh saat ujian)
+  useEffect(() => {
+    if (isLoading || !siswa || !jadwalId) return;
+    async function tryResume() {
+      if (!siswa) return;
+      const sesRes = await fetch(`/api/session?siswaId=${siswa.id}&jadwalId=${jadwalId}`);
+      const existing: SessionUjian | null = await sesRes.json();
+      if (existing && existing.status === 'berlangsung') {
+        await resumeExam(existing);
+      }
+    }
+    tryResume();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, siswa, jadwalId]);
+
+  // Guard — tunggu isLoading selesai dulu baru redirect
+  useEffect(() => {
+    if (isLoading) return;
     if (!user || user.role !== 'siswa' || !siswa) {
       router.replace('/login');
     }
-  }, [user, siswa, router]);
+  }, [isLoading, user, siswa, router]);
 
-  // Timer
+  // Timer countdown + re-sync dari deadline tiap 30 detik
   useEffect(() => {
     if (phase !== 'exam' || submitted) return;
+
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -51,99 +92,346 @@ export default function ExamPage() {
         return prev - 1;
       });
     }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+
+    // Re-sync waktu dari deadline tiap 30 detik untuk cegah clock drift
+    // Sekaligus simpan sisa_waktu ke DB sebagai metadata (bukan source of truth)
+    saveTimerRef.current = setInterval(() => {
+      const ses = sessionRef.current;
+      if (!ses) return;
+
+      // Re-sync dari deadline
+      const sisaFromDeadline = Math.max(
+        0,
+        Math.floor((new Date(ses.deadline).getTime() - Date.now()) / 1000)
+      );
+      setTimeLeft(sisaFromDeadline);
+      timeLeftRef.current = sisaFromDeadline;
+
+      if (sisaFromDeadline <= 0) {
+        clearInterval(timerRef.current!);
+        clearInterval(saveTimerRef.current!);
+        handleAutoSubmit();
+        return;
+      }
+
+      // P6: sisa_waktu dihitung dari deadline di klien — tidak perlu PATCH ke DB tiap 30 detik
+      // deadline adalah source of truth, mengurangi 140 req/menit untuk 70 siswa
+    }, 30000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (saveTimerRef.current) clearInterval(saveTimerRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, submitted]);
 
-  const handleAutoSubmit = useCallback(() => {
-    if (!session) return;
-    const nilai = submitSession(session.id);
-    setResult(nilai);
-    setSubmitted(true);
-    setPhase('result');
-  }, [session]);
+  // Polling cek force_submit tiap 20 detik saat exam berlangsung
+  useEffect(() => {
+    if (phase !== 'exam' || submitted || !siswa || !jadwalId) return;
+    const t = setInterval(async () => {
+      if (!siswa) return;
+      try {
+        const res = await fetch(`/api/session?siswaId=${siswa.id}&jadwalId=${jadwalId}`);
+        const ses: SessionUjian | null = await res.json();
+        if (ses && (ses.status === 'force_submit' || ses.status === 'selesai') && !submitted) {
+          clearInterval(t);
+          if (timerRef.current) clearInterval(timerRef.current);
+          if (saveTimerRef.current) clearInterval(saveTimerRef.current);
+          setTimeLeft(0);
+          setSubmitted(true);
+          if (ses.status === 'force_submit') {
+            setNotify({ msg: 'Jawaban kamu telah disubmit oleh proktor.', type: 'warning' });
+          }
+          setTimeout(() => router.replace('/siswa/dashboard'), 3000);
+        }
+      } catch { /* abaikan error jaringan */ }
+    }, 20000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, submitted, siswa, jadwalId]);
 
-  function handleStartExam() {
-    if (!siswa) return;
-    const store = getStore();
-    const jadwal = store.jadwalUjians.find(j => j.id === jadwalId);
-    if (!jadwal) { setStartError('Jadwal tidak ditemukan.'); return; }
-    if (jadwal.status !== 'Dibuka') { setStartError('Sesi ujian belum/sudah ditutup.'); return; }
-    if (!jadwal.siswa_ids.includes(siswa.id)) { setStartError('Kamu tidak terdaftar di sesi ini.'); return; }
+  const handleAutoSubmit = useCallback(async () => {
+    const ses = sessionRef.current;
+    if (!ses) return;
 
-    // Cek kapasitas
-    const activeSessions = store.sessions.filter(
-      s => s.id_jadwal === jadwalId && s.status === 'berlangsung'
-    ).length;
-    if (activeSessions >= jadwal.max_capacity) { setStartError('Kapasitas sesi penuh.'); return; }
+    // B-01/B-02: Jangan clear timer atau set submitted sebelum fetch berhasil.
+    // Jika fetch gagal, timer tetap berjalan dan siswa masih bisa submit manual.
+    setNotify({ msg: 'Waktu ujian telah habis. Jawaban kamu otomatis dikumpulkan.', type: 'warning' });
 
-    // Cek sudah pernah submit
-    const existing = getSessionBySiswaJadwal(siswa.id, jadwalId);
-    if (existing && (existing.status === 'selesai' || existing.status === 'force_submit')) {
-      setStartError('Kamu sudah menyelesaikan ujian ini.'); return;
+    try {
+      const res = await fetch('/api/nilai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: ses.id }),
+      });
+
+      if (!res.ok) {
+        // Fetch gagal — jangan matikan timer, biarkan siswa submit manual
+        setNotify({ msg: 'Gagal mengumpulkan jawaban otomatis. Silakan kumpulkan manual.', type: 'warning' });
+        return;
+      }
+
+      // Berhasil — baru clear timer dan set submitted
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (saveTimerRef.current) clearInterval(saveTimerRef.current);
+      setTimeLeft(0);
+      setSubmitted(true);
+      setTimeout(() => router.replace('/siswa/dashboard'), 3000);
+    } catch {
+      // Network error — jangan matikan timer
+      setNotify({ msg: 'Gagal mengumpulkan jawaban otomatis. Silakan kumpulkan manual.', type: 'warning' });
+    }
+  }, [router]);
+
+  // Resume session yang sudah berlangsung (saat refresh/reconnect)
+  async function resumeExam(ses: SessionUjian) {
+    // ── Hitung sisa waktu dari deadline (single source of truth) ──
+    // Jangan pakai sisa_waktu dari DB — waktu tetap berjalan di server
+    // meski client mati/disconnect. deadline adalah nilai yang tidak berubah.
+    const sisaWaktu = Math.max(
+      0,
+      Math.floor((new Date(ses.deadline).getTime() - Date.now()) / 1000)
+    );
+
+    // Jika deadline sudah lewat, langsung auto-submit tanpa load soal
+    if (sisaWaktu <= 0) {
+      const submitRes = await fetch('/api/nilai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: ses.id }),
+      });
+      // Tetap redirect meski gagal — session sudah expired, tidak ada yang bisa dilakukan
+      if (!submitRes.ok) console.error('Auto-submit expired session gagal:', submitRes.status);
+      router.replace('/siswa/dashboard');
+      return;
     }
 
-    const soals = getSoalsByUjian(jadwal.id_ujian);
-    if (soals.length === 0) { setStartError('Belum ada soal untuk ujian ini.'); return; }
+    // Ambil id_ujian dari jadwal
+    const jadwalRes = await fetch(`/api/jadwal/${jadwalId}`);
+    const jadwalData = await jadwalRes.json();
+    const idUjian = jadwalData.id_ujian;
+    if (!idUjian) return;
 
-    let ses = existing && existing.status === 'berlangsung' ? existing : null;
-    if (!ses) ses = createSession(siswa.id, jadwal, soals);
+    // Set jadwal/ujian info
+    setJadwalInfo(jadwalData);
+    if (jadwalData.ujians) setUjianInfo(jadwalData.ujians);
 
-    // Build ordered soal list
-    const orderedSoals = ses.urutan_soal.map(id => soals.find(s => s.id === id)!).filter(Boolean);
+    // Ambil soal
+    const soalRes = await fetch(`/api/soal/${idUjian}`);
+    const allSoals: Soal[] = await soalRes.json();
+    if (!allSoals.length) return;
 
-    // Build jawaban map from store
+    const orderedSoals = (ses.urutan_soal as string[])
+      .map((id: string) => allSoals.find(s => s.id === id))
+      .filter(Boolean) as Soal[];
+
+    // Ambil jawaban yang sudah ada
+    const jawRes = await fetch(`/api/jawaban?sessionId=${ses.id}`);
+    const jawabanList: Jawaban[] = await jawRes.json();
     const jawMap: Record<string, Jawaban> = {};
-    store.jawabans.filter(j => j.id_session === ses!.id).forEach(j => { jawMap[j.id_soal] = j; });
+    jawabanList.forEach(j => { jawMap[j.id_soal] = j; });
 
-    // Recalculate time left
-    const now = Date.now();
-    const deadline = new Date(ses.deadline).getTime();
-    const remaining = Math.max(0, Math.floor((deadline - now) / 1000));
+    // Restore ke soal terakhir yang dikerjakan (index soal terakhir yang ada jawabannya)
+    const lastAnsweredIndex = orderedSoals.reduce((lastIdx, soal, idx) => {
+      return jawMap[soal.id] ? idx : lastIdx;
+    }, 0);
 
     setSession(ses);
     setSoalList(orderedSoals);
     setJawaban(jawMap);
-    setTimeLeft(remaining);
+    setCurrentIndex(lastAnsweredIndex);
+    setTimeLeft(sisaWaktu);
     setPhase('exam');
   }
 
-  function handleSelectJawaban(soalId: string, opsiKey: JawabanBenar) {
+  async function handleStartExam() {
+    if (!siswa) return;
+    setStartError('');
+    setStartLoading(true);
+    try {
+      // Cek session yang sudah ada
+      const sesRes = await fetch(`/api/session?siswaId=${siswa.id}&jadwalId=${jadwalId}`);
+      const existing: SessionUjian | null = await sesRes.json();
+
+      if (existing && (existing.status === 'selesai' || existing.status === 'force_submit')) {
+        setStartError('Kamu sudah menyelesaikan ujian ini.'); return;
+      }
+
+      let ses = existing && existing.status === 'berlangsung' ? existing : null;
+      if (!ses) {
+        const createRes = await fetch('/api/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siswaId: siswa.id, jadwalId }),
+        });
+        if (!createRes.ok) {
+          const err = await createRes.json();
+          setStartError(err.error ?? 'Gagal memulai ujian.'); return;
+        }
+        ses = await createRes.json();
+      }
+
+      if (!ses) { setStartError('Gagal memulai ujian.'); return; }
+
+      // Ambil id_ujian dari jadwal
+      const jadwalRes = await fetch(`/api/jadwal/${jadwalId}`);
+      const jadwalData = await jadwalRes.json();
+      const idUjian = jadwalData.id_ujian;
+      if (!idUjian) { setStartError('Ujian tidak ditemukan.'); return; }
+
+    // Ambil soal dari API
+    const soalRes = await fetch(`/api/soal/${idUjian}`);
+    const allSoals: Soal[] = await soalRes.json();
+    if (allSoals.length === 0) { setStartError('Belum ada soal untuk ujian ini.'); return; }
+
+    // Urutkan soal sesuai urutan_soal di session
+    const orderedSoals = (ses.urutan_soal as string[])
+      .map((id: string) => allSoals.find(s => s.id === id))
+      .filter(Boolean) as Soal[];
+
+    // Ambil jawaban yang sudah ada
+    const jawRes = await fetch(`/api/jawaban?sessionId=${ses.id}`);
+    const jawabanList: Jawaban[] = await jawRes.json();
+    const jawMap: Record<string, Jawaban> = {};
+    jawabanList.forEach(j => { jawMap[j.id_soal] = j; });
+
+    // ── Selalu hitung sisa waktu dari deadline (single source of truth) ──
+    // sisa_waktu di DB hanya backup, bukan sumber kebenaran.
+    // deadline tidak pernah berubah sejak session dibuat.
+    const sisaWaktu = Math.max(
+      0,
+      Math.floor((new Date(ses.deadline).getTime() - Date.now()) / 1000)
+    );
+
+    // Jika deadline sudah lewat, langsung auto-submit
+    if (sisaWaktu <= 0) {
+      await fetch('/api/nilai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: ses.id }),
+      });
+      router.replace('/siswa/dashboard');
+      return;
+    }
+
+    // Restore ke soal terakhir yang dikerjakan
+    const lastAnsweredIndex = orderedSoals.reduce((lastIdx, soal, idx) => {
+      return jawMap[soal.id] ? idx : lastIdx;
+    }, 0);
+
+    setSession(ses);
+    setSoalList(orderedSoals);
+    setJawaban(jawMap);
+    setCurrentIndex(lastAnsweredIndex);
+    setTimeLeft(sisaWaktu);
+    setPhase('exam');
+    } catch {
+      setStartError('Terjadi kesalahan. Coba lagi.');
+    } finally {
+      setStartLoading(false);
+    }
+  }
+
+  async function handleSelectJawaban(soalId: string, opsiKey: JawabanBenar) {
     if (!session || submitted) return;
     const prev = jawaban[soalId];
     const status: StatusSoal = prev?.status_soal === 'ragu' ? 'ragu' : 'sudah';
-    upsertJawaban(session.id, soalId, opsiKey, status);
-    setJawaban(prev => ({
-      ...prev,
-      [soalId]: {
-        ...(prev[soalId] ?? {}),
-        id: `jw_${soalId}`,
-        id_session: session.id,
-        id_soal: soalId,
-        jawaban_siswa: opsiKey,
-        benar_salah: null,
-        waktu_jawab: new Date().toISOString(),
-        status_soal: status,
-      },
-    }));
+
+    // B-04: Update UI optimistis dulu agar responsif, lalu konfirmasi ke server.
+    // Jika server gagal, revert state ke nilai sebelumnya.
+    const newJawaban: Jawaban = {
+      ...(prev ?? {}),
+      id: prev?.id ?? `jw_${soalId}`,
+      id_session: session.id,
+      id_soal: soalId,
+      jawaban_siswa: opsiKey,
+      benar_salah: null,
+      waktu_jawab: new Date().toISOString(),
+      status_soal: status,
+    };
+    setJawaban(p => ({ ...p, [soalId]: newJawaban }));
+
+    try {
+      const res = await fetch('/api/jawaban', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id, soalId, jawaban_siswa: opsiKey, status_soal: status }),
+      });
+      if (!res.ok) {
+        // Revert ke state sebelumnya jika gagal
+        setJawaban(p => {
+          const reverted = { ...p };
+          if (prev) reverted[soalId] = prev;
+          else delete reverted[soalId];
+          return reverted;
+        });
+        setNotify({ msg: 'Gagal menyimpan jawaban. Coba lagi.', type: 'warning' });
+      }
+    } catch {
+      // Network error — revert
+      setJawaban(p => {
+        const reverted = { ...p };
+        if (prev) reverted[soalId] = prev;
+        else delete reverted[soalId];
+        return reverted;
+      });
+      setNotify({ msg: 'Gagal menyimpan jawaban. Periksa koneksi.', type: 'warning' });
+    }
   }
 
-  function handleToggleRagu(soalId: string) {
+  async function handleToggleRagu(soalId: string) {
     if (!session || submitted) return;
     const prev = jawaban[soalId];
     const newStatus: StatusSoal = prev?.status_soal === 'ragu' ? 'sudah' : 'ragu';
-    upsertJawaban(session.id, soalId, prev?.jawaban_siswa ?? null, newStatus);
+
+    // B-04: Optimistic update dengan revert jika gagal
     setJawaban(p => ({ ...p, [soalId]: { ...p[soalId], status_soal: newStatus } as Jawaban }));
+
+    try {
+      const res = await fetch('/api/jawaban', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id, soalId, jawaban_siswa: prev?.jawaban_siswa ?? null, status_soal: newStatus }),
+      });
+      if (!res.ok) {
+        // Revert
+        setJawaban(p => ({ ...p, [soalId]: { ...p[soalId], status_soal: prev?.status_soal ?? 'belum' } as Jawaban }));
+        setNotify({ msg: 'Gagal menyimpan status ragu. Coba lagi.', type: 'warning' });
+      }
+    } catch {
+      setJawaban(p => ({ ...p, [soalId]: { ...p[soalId], status_soal: prev?.status_soal ?? 'belum' } as Jawaban }));
+      setNotify({ msg: 'Gagal menyimpan status ragu. Periksa koneksi.', type: 'warning' });
+    }
   }
 
-  function handleSubmit() {
-    if (!session) return;
-    if (timerRef.current) clearInterval(timerRef.current);
-    const nilai = submitSession(session.id);
-    setResult(nilai);
-    setSubmitted(true);
-    setShowConfirm(false);
-    setPhase('result');
+  async function handleSubmit() {
+    if (!session || submitLoading) return;
+    setSubmitLoading(true);
+    try {
+      // BUG FIX: jangan blokir submit jika ada soal kosong — cukup warning di modal
+      // Soal kosong tetap boleh dikumpulkan, warning sudah ditampilkan di modal confirm
+
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (saveTimerRef.current) clearInterval(saveTimerRef.current);
+
+      const res = await fetch('/api/nilai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id }),
+      });
+      if (!res.ok) {
+        setNotify({ msg: 'Gagal mengumpulkan jawaban. Coba lagi.', type: 'warning' });
+        return;
+      }
+      setSubmitted(true);
+      setShowConfirm(false);
+      setEmptyWarning('');
+      router.replace('/siswa/dashboard');
+    } catch {
+      setNotify({ msg: 'Gagal mengumpulkan jawaban. Coba lagi.', type: 'warning' });
+    } finally {
+      setSubmitLoading(false);
+    }
   }
 
   // ── Helpers ──────────────────────────────────────────────────
@@ -173,7 +461,7 @@ export default function ExamPage() {
 
   function getOpsiText(soal: Soal, opsiKey: JawabanBenar): string {
     const map: Record<JawabanBenar, string> = {
-      A: soal.opsi_a, B: soal.opsi_b, C: soal.opsi_c, D: soal.opsi_d, E: soal.opsi_e,
+      A: soal.opsi_a, B: soal.opsi_b, C: soal.opsi_c, D: soal.opsi_d, E: '',
     };
     return map[opsiKey];
   }
@@ -183,11 +471,12 @@ export default function ExamPage() {
     if (!session) return [];
     const opsiUrutan = session.urutan_opsi[soal.id] ?? (['A','B','C','D','E'] as JawabanBenar[]);
     const displayKeys: JawabanBenar[] = ['A','B','C','D','E'];
+    // BUG FIX: filter opsi yang teksnya kosong (opsi E tidak digunakan)
     return displayKeys.map((displayKey, idx) => ({
       displayKey,
       originalKey: opsiUrutan[idx],
       text: getOpsiText(soal, opsiUrutan[idx]),
-    }));
+    })).filter(o => o.text.trim() !== '');
   }
 
   const currentSoal = soalList[currentIndex];
@@ -199,19 +488,17 @@ export default function ExamPage() {
   // ── Render: Confirm Phase ──────────────────────────────────
 
   if (phase === 'confirm') {
-    const store = getStore();
-    const jadwal = store.jadwalUjians.find(j => j.id === jadwalId);
-    const ujian  = jadwal ? store.ujians.find(u => u.id === jadwal.id_ujian) : null;
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', backgroundColor: 'var(--color-bg)' }}>
         <div style={{ position: 'fixed', top: '1rem', right: '1rem' }}><ThemeToggle /></div>
         <div className="card" style={{ width: '100%', maxWidth: 440 }}>
           <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-text)', margin: '0 0 0.25rem' }}>
-            {ujian?.nama_ujian ?? 'Mulai Ujian'}
+            {ujianInfo?.nama_ujian ?? 'Mulai Ujian'}
           </h2>
-          {ujian && (
+          {ujianInfo && jadwalInfo && (
             <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', margin: '0 0 1.25rem' }}>
-              Durasi: {ujian.durasi} menit &nbsp;·&nbsp; KKM: {ujian.nilai_kkm} &nbsp;·&nbsp; Ruangan: {jadwal?.ruangan}
+              {/* durasi_menit ADA di jadwal_ujians di DB */}
+              Durasi: {jadwalInfo.durasi_menit} menit
             </p>
           )}
           {startError && (
@@ -220,84 +507,11 @@ export default function ExamPage() {
           <div className="alert alert-warning" style={{ fontSize: '0.8125rem', marginBottom: '1rem' }}>
             Pastikan kamu siap. Timer dimulai segera setelah ujian dimulai.
           </div>
-          <button onClick={handleStartExam} className="btn btn-primary btn-lg" style={{ width: '100%', marginBottom: '0.75rem' }}>
-            Mulai Ujian
+          <button onClick={handleStartExam} className="btn btn-primary btn-lg" style={{ width: '100%', marginBottom: '0.75rem' }} disabled={startLoading}>
+            {startLoading ? 'Memulai ujian...' : 'Mulai Ujian'}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => router.back()}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => router.back()} disabled={startLoading}>
             Kembali
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Render: Result Phase ───────────────────────────────────
-
-  if (phase === 'result' && result) {
-    const store = getStore();
-    const jadwal = store.jadwalUjians.find(j => j.id === jadwalId);
-    const ujian  = jadwal ? store.ujians.find(u => u.id === jadwal.id_ujian) : null;
-    const tampilHasil = ujian?.tampil_hasil ?? true;
-
-    return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', backgroundColor: 'var(--color-bg)' }}>
-        <div style={{ position: 'fixed', top: '1rem', right: '1rem' }}><ThemeToggle /></div>
-        <div className="card" style={{ width: '100%', maxWidth: 480, textAlign: 'center' }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: 'var(--radius-full)',
-            background: result.lulus ? 'var(--color-success-bg)' : 'var(--color-danger-bg)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem',
-          }}>
-            {result.lulus ? (
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            ) : (
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            )}
-          </div>
-          <h2 style={{ fontSize: '1.375rem', fontWeight: 700, margin: '0 0 0.25rem', color: 'var(--color-text)' }}>
-            Ujian Selesai
-          </h2>
-          <p style={{ color: 'var(--color-text-muted)', margin: '0 0 1.5rem', fontSize: '0.9375rem' }}>
-            {ujian?.nama_ujian}
-          </p>
-
-          {tampilHasil ? (
-            <>
-              <div style={{
-                fontSize: '3rem', fontWeight: 800,
-                color: result.lulus ? 'var(--color-success)' : 'var(--color-danger)',
-                lineHeight: 1, marginBottom: '0.5rem',
-              }}>
-                {result.nilai.toFixed(2)}
-              </div>
-              <span className={result.lulus ? 'badge badge-success' : 'badge badge-danger'} style={{ fontSize: '0.9375rem', padding: '0.375rem 1rem' }}>
-                {result.lulus ? 'Lulus' : 'Tidak Lulus'}
-              </span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', margin: '1.5rem 0' }}>
-                {[
-                  { label: 'Benar',  val: result.jumlah_benar,  color: 'var(--color-success)' },
-                  { label: 'Salah',  val: result.jumlah_salah,  color: 'var(--color-danger)' },
-                  { label: 'Kosong', val: result.jumlah_kosong, color: 'var(--color-text-muted)' },
-                ].map(item => (
-                  <div key={item.label} className="card card-raised" style={{ padding: '0.875rem 0.5rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: item.color }}>{item.val}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{item.label}</div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="alert alert-info" style={{ margin: '1rem 0 1.5rem' }}>
-              Hasil ujian akan ditampilkan setelah seluruh sesi ditutup oleh proktor.
-            </div>
-          )}
-
-          <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => router.replace('/siswa/dashboard')}>
-            Kembali ke Dashboard
           </button>
         </div>
       </div>
@@ -317,7 +531,7 @@ export default function ExamPage() {
       <header className="topbar" style={{ justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-text)' }}>
-            {getStore().ujians.find(u => u.id === getStore().jadwalUjians.find(j => j.id === jadwalId)?.id_ujian)?.nama_ujian ?? 'Ujian'}
+            {ujianInfo?.nama_ujian ?? 'Ujian'}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
@@ -341,6 +555,51 @@ export default function ExamPage() {
         </div>
       </header>
 
+      {/* Empty warning */}
+      {emptyWarning && (
+        <div style={{
+          background: 'var(--color-warning-bg)',
+          borderBottom: '2px solid var(--color-warning)',
+          padding: '0.625rem 1.5rem',
+          fontSize: '0.875rem',
+          fontWeight: 600,
+          color: 'var(--color-warning)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+        }}>
+          <span>{emptyWarning}</span>
+          <button onClick={() => setEmptyWarning('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-warning)', fontWeight: 700, fontSize: '1rem', lineHeight: 1 }}>✕</button>
+        </div>
+      )}
+
+      {/* Notifikasi force submit / waktu habis */}
+      {notify && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 500,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'var(--color-surface)',
+            border: `2px solid ${notify.type === 'warning' ? 'var(--color-warning)' : 'var(--color-primary)'}`,
+            borderRadius: '0.875rem',
+            padding: '2rem 2.5rem',
+            maxWidth: 400,
+            textAlign: 'center',
+            boxShadow: 'var(--shadow-xl)',
+          }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>
+              {notify.type === 'warning' ? '⏰' : 'ℹ️'}
+            </div>
+            <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.6 }}>
+              {notify.msg}
+            </p>
+            <p style={{ margin: '0.75rem 0 0', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+              Kamu akan diarahkan ke dashboard dalam beberapa detik...
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Body: soal + panel */}
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 220px', gap: 0, maxWidth: '100%', overflow: 'hidden' }}>
         {/* Area Soal */}
@@ -355,7 +614,21 @@ export default function ExamPage() {
 
           {/* Pertanyaan */}
           <div className="card" style={{ padding: '1.25rem', lineHeight: 1.7, fontSize: '0.9375rem' }}>
-            {currentSoal.pertanyaan}
+            {currentSoal.gambar_url && (
+              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <img
+                  src={currentSoal.gambar_url}
+                  alt="Gambar soal"
+                  style={{
+                    maxWidth: '100%', maxHeight: 280,
+                    objectFit: 'contain', borderRadius: 8,
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface-raised)',
+                  }}
+                />
+              </div>
+            )}
+            <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{currentSoal.pertanyaan}</p>
           </div>
 
           {/* Opsi */}
@@ -400,7 +673,16 @@ export default function ExamPage() {
               ) : (
                 <button
                   className="btn btn-primary btn-sm"
-                  onClick={() => setShowConfirm(true)}
+                  onClick={() => {
+                    if (kosong > 0) {
+                      const firstEmpty = soalList.findIndex(s => !jawaban[s.id]?.jawaban_siswa);
+                      if (firstEmpty !== -1) setCurrentIndex(firstEmpty);
+                      setEmptyWarning(`Masih ada ${kosong} soal yang belum dijawab. Silakan lengkapi terlebih dahulu.`);
+                      return;
+                    }
+                    setEmptyWarning('');
+                    setShowConfirm(true);
+                  }}
                   disabled={submitted}
                 >
                   Selesai & Kumpulkan
@@ -460,7 +742,16 @@ export default function ExamPage() {
           <button
             className="btn btn-primary btn-sm"
             style={{ width: '100%' }}
-            onClick={() => setShowConfirm(true)}
+            onClick={() => {
+              if (kosong > 0) {
+                const firstEmpty = soalList.findIndex(s => !jawaban[s.id]?.jawaban_siswa);
+                if (firstEmpty !== -1) setCurrentIndex(firstEmpty);
+                setEmptyWarning(`Masih ada ${kosong} soal yang belum dijawab. Silakan lengkapi terlebih dahulu.`);
+                return;
+              }
+              setEmptyWarning('');
+              setShowConfirm(true);
+            }}
             disabled={submitted}
           >
             Kumpulkan Jawaban
@@ -501,8 +792,10 @@ export default function ExamPage() {
               </p>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setShowConfirm(false)}>Kembali</button>
-              <button className="btn btn-primary" onClick={handleSubmit}>Ya, Kumpulkan</button>
+              <button className="btn btn-ghost" onClick={() => setShowConfirm(false)} disabled={submitLoading}>Kembali</button>
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitLoading}>
+                {submitLoading ? 'Mengumpulkan...' : 'Ya, Kumpulkan'}
+              </button>
             </div>
           </div>
         </div>

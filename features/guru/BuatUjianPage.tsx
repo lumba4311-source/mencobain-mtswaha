@@ -4,204 +4,171 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { getStore, createUjian, type CreateUjianInput } from '@/lib/store';
-import type { Kelas, MataPelajaran, JenisUjian } from '@/types';
 
-const JENIS_UJIAN: JenisUjian[] = ['UMBK', 'UAS', 'PAS', 'PTS', 'TRYOUT', 'LATIHAN'];
-
-const emptyForm = (): Omit<CreateUjianInput, 'id_guru'> => ({
-  nama_ujian: '',
-  id_mapel: '',
-  jenis_ujian: 'UAS',
-  durasi: 90,
-  nilai_kkm: 75,
-  acak_soal: true,
-  acak_opsi: true,
-  tampil_hasil: false,
-  kelas_ids: [],
-});
+import AppTopbar from '@/components/AppTopbar';
 
 export default function BuatUjianPage() {
-  const { user, guru } = useAuth();
+  const { user, guru, isLoading } = useAuth();
   const router = useRouter();
-  const [form, setForm] = useState(emptyForm());
-  const [kelasList, setKelasList] = useState<Kelas[]>([]);
-  const [mapelList, setMapelList] = useState<MataPelajaran[]>([]);
+  const [namaUjian, setNamaUjian] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (isLoading) return;
     if (!user || user.role !== 'guru' || !guru) { router.replace('/login'); return; }
-    const s = getStore();
-    setKelasList([...s.kelas]);
-    // Hanya tampilkan mapel yang diampu guru ini
-    const mapelDiampu = s.mataPelajaran.filter(m => guru.mapel_ids.includes(m.id));
-    setMapelList(mapelDiampu);
-    // Default pilih mapel pertama
-    if (mapelDiampu.length > 0) setForm(p => ({ ...p, id_mapel: mapelDiampu[0].id }));
-  }, [user, guru, router]);
+  }, [isLoading, user, guru, router]);
 
-  function handleToggleKelas(kelasId: string) {
-    setForm(p => ({
-      ...p,
-      kelas_ids: p.kelas_ids.includes(kelasId)
-        ? p.kelas_ids.filter(id => id !== kelasId)
-        : [...p.kelas_ids, kelasId],
-    }));
-  }
+  if (isLoading || !user || !guru) return null;
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setError('');
-    if (!form.nama_ujian.trim()) { setError('Nama ujian wajib diisi.'); return; }
-    if (!form.id_mapel)          { setError('Mata pelajaran wajib dipilih.'); return; }
-    if (form.durasi < 1)         { setError('Durasi minimal 1 menit.'); return; }
-    if (form.nilai_kkm < 0 || form.nilai_kkm > 100) { setError('KKM harus antara 0–100.'); return; }
-    if (form.kelas_ids.length === 0) { setError('Pilih minimal 1 kelas.'); return; }
+    if (!namaUjian.trim()) { setError('Nama ujian wajib diisi.'); return; }
     if (!guru) return;
-
     setSaving(true);
-    const input: CreateUjianInput = { ...form, id_guru: guru.id };
-    const ujian = createUjian(input);
-    setSaving(false);
-    // Langsung redirect ke halaman kelola soal
-    router.replace(`/guru/soal?ujian=${ujian.id}`);
+    try {
+      const res = await fetch('/api/ujian', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nama_ujian: namaUjian.trim(),
+          id_guru: guru.id,
+          jenis_ujian: 'LATIHAN',
+          durasi: 90,
+          acak_soal: true,
+          acak_opsi: true,
+          tampil_hasil: false,
+          kelas_ids: [],
+        }),
+      });
+      const ujian = await res.json();
+      if (!res.ok) { setError(ujian.error ?? 'Gagal membuat ujian.'); return; }
+      router.push(`/guru/soal?ujian=${ujian.id}`);
+    } catch {
+      setError('Terjadi kesalahan. Periksa koneksi dan coba lagi.');
+    } finally {
+      // D-01: finally memastikan tombol tidak stuck meski terjadi network error
+      setSaving(false);
+    }
   }
-
-  if (!user || !guru) return null;
 
   return (
-    <div style={{ minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <header className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>
-            </svg>
-          </div>
-          <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--color-text)' }}>E-CBT MTS WAHA</span>
-          <span style={{ color: 'var(--color-border)', fontSize: '1rem' }}>|</span>
-          <Link href="/guru/dashboard" style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'none' }}>Dashboard</Link>
-          <span style={{ color: 'var(--color-border)' }}>/</span>
-          <span style={{ fontSize: '0.875rem', color: 'var(--color-text)' }}>Buat Ujian</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <ThemeToggle />
-        </div>
-      </header>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: 'var(--color-bg)' }}>
+      <AppTopbar pageLabel="Buat Ujian" />
 
-      <main className="page-container" style={{ paddingTop: '1.5rem' }}>
-        <div style={{ maxWidth: 640, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <Link href="/guru/dashboard" className="btn btn-ghost btn-sm">← Kembali</Link>
-            <h1 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-text)' }}>Buat Ujian Baru</h1>
-          </div>
-
-          {error && (
-            <div style={{ padding: '0.75rem 1rem', background: 'var(--color-danger-subtle)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', color: 'var(--color-danger)', marginBottom: '1rem', fontSize: '0.875rem' }}>
-              {error}
+      <main style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 24px' }}>
+        <div style={{
+          width: '100%', maxWidth: 480,
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 14,
+          boxShadow: 'var(--shadow-md)',
+          overflow: 'hidden',
+        }}>
+          {/* Card header */}
+          <div style={{
+            padding: '20px 24px 16px',
+            borderBottom: '1px solid var(--color-border)',
+            background: 'var(--color-surface-raised)',
+          }}>
+            {/* Breadcrumb */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <Link href="/guru/dashboard" style={{ fontSize: '0.6875rem', color: 'var(--color-text-subtle)', fontWeight: 500, textDecoration: 'none' }}>
+                Dashboard
+              </Link>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-subtle)' }}>
+                <polyline points="9,18 15,12 9,6"/>
+              </svg>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--color-secondary)', fontWeight: 600 }}>
+                Buat Ujian
+              </span>
             </div>
-          )}
-
-          {/* ── Informasi Ujian ── */}
-          <div className="card" style={{ marginBottom: '1rem' }}>
-            <h2 style={{ margin: '0 0 1rem', fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-text)' }}>Informasi Ujian</h2>
-            <div style={{ display: 'grid', gap: '1rem' }}>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.375rem', color: 'var(--color-text)' }}>Nama Ujian *</label>
-                <input className="input" type="text" placeholder="Contoh: UAS Bahasa Indonesia Semester 1"
-                  value={form.nama_ujian}
-                  onChange={e => setForm(p => ({ ...p, nama_ujian: e.target.value }))} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.375rem', color: 'var(--color-text)' }}>Mata Pelajaran *</label>
-                  <select className="input" value={form.id_mapel} onChange={e => setForm(p => ({ ...p, id_mapel: e.target.value }))}>
-                    <option value="">— Pilih —</option>
-                    {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama_mapel}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.375rem', color: 'var(--color-text)' }}>Jenis Ujian *</label>
-                  <select className="input" value={form.jenis_ujian} onChange={e => setForm(p => ({ ...p, jenis_ujian: e.target.value as JenisUjian }))}>
-                    {JENIS_UJIAN.map(j => <option key={j} value={j}>{j}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.375rem', color: 'var(--color-text)' }}>Durasi (menit) *</label>
-                  <input className="input" type="number" min={1} max={300}
-                    value={form.durasi}
-                    onChange={e => setForm(p => ({ ...p, durasi: parseInt(e.target.value) || 0 }))} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.375rem', color: 'var(--color-text)' }}>Nilai KKM</label>
-                  <input className="input" type="number" min={0} max={100}
-                    value={form.nilai_kkm}
-                    onChange={e => setForm(p => ({ ...p, nilai_kkm: parseFloat(e.target.value) || 0 }))} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Konfigurasi ── */}
-          <div className="card" style={{ marginBottom: '1rem' }}>
-            <h2 style={{ margin: '0 0 1rem', fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-text)' }}>Konfigurasi</h2>
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {[
-                { key: 'acak_soal',    label: 'Acak urutan soal',             desc: 'Setiap siswa mendapat urutan soal yang berbeda' },
-                { key: 'acak_opsi',    label: 'Acak urutan pilihan jawaban',  desc: 'Opsi A–E diacak per siswa per soal' },
-                { key: 'tampil_hasil', label: 'Tampilkan hasil ke siswa',     desc: 'Siswa bisa lihat nilai setelah submit' },
-              ].map(cfg => (
-                <label key={cfg.key} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.625rem', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-alt)' }}>
-                  <input
-                    type="checkbox"
-                    checked={(form as Record<string, unknown>)[cfg.key] as boolean}
-                    onChange={e => setForm(p => ({ ...p, [cfg.key]: e.target.checked }))}
-                    style={{ accentColor: 'var(--color-primary)', width: 16, height: 16, flexShrink: 0 }}
-                  />
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text)' }}>{cfg.label}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{cfg.desc}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Kelas Target ── */}
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <h2 style={{ margin: '0 0 1rem', fontSize: '0.9375rem', fontWeight: 700, color: 'var(--color-text)' }}>
-              Kelas Target ({form.kelas_ids.length} dipilih)
-            </h2>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {kelasList.map(k => {
-                const active = form.kelas_ids.includes(k.id);
-                return (
-                  <button
-                    key={k.id}
-                    onClick={() => handleToggleKelas(k.id)}
-                    className={active ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
-                  >
-                    {active ? '✓ ' : ''}Kelas {k.nama_kelas}
-                  </button>
-                );
-              })}
-            </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '0.75rem 0 0' }}>
-              Ujian ini akan tersedia untuk kelas yang dipilih. Peserta per sesi ditentukan oleh proktor saat membuat jadwal.
+            <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>
+              Buat Ujian Baru
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+              Masukkan nama ujian. Soal dapat ditambahkan setelah ujian dibuat.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-            <Link href="/guru/dashboard" className="btn btn-ghost">Batal</Link>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Menyimpan...' : 'Buat Ujian & Kelola Soal →'}
-            </button>
+          {/* Card body */}
+          <div style={{ padding: '24px' }}>
+            {/* Nama Ujian */}
+            <div style={{ marginBottom: 20 }}>
+              <label htmlFor="nama_ujian" style={{
+                display: 'block', marginBottom: 6,
+                fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text)',
+              }}>
+                Nama Ujian <span style={{ color: 'var(--color-danger)' }}>*</span>
+              </label>
+              <input
+                id="nama_ujian"
+                className="form-input"
+                type="text"
+                placeholder="Contoh: Ujian Tengah Semester Matematika"
+                value={namaUjian}
+                onChange={e => { setNamaUjian(e.target.value); setError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); }}
+                autoFocus
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            {/* Info box — sistem otomatis */}
+            <div style={{
+              display: 'flex', gap: 10,
+              padding: '12px 14px',
+              background: 'color-mix(in srgb, var(--color-secondary) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-secondary) 20%, transparent)',
+              borderRadius: 8,
+              marginBottom: 20,
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ color: 'var(--color-secondary)', flexShrink: 0, marginTop: 1 }}>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--color-text)', display: 'block', marginBottom: 2 }}>Konfigurasi otomatis sistem:</strong>
+                Acak urutan soal & jawaban aktif. Semua siswa otomatis terdaftar. Penilaian dihitung otomatis (100 ÷ jumlah soal per soal).
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div style={{
+                padding: '10px 14px', marginBottom: 16,
+                background: 'var(--color-danger-bg)',
+                border: '1px solid var(--color-danger-border)',
+                borderRadius: 8,
+                fontSize: '0.8125rem', color: 'var(--color-danger)', fontWeight: 500,
+              }}>
+                {error}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <Link href="/guru/dashboard" className="btn btn-ghost">
+                Batal
+              </Link>
+              <button
+                className="btn btn-primary"
+                onClick={handleSubmit}
+                disabled={saving || !namaUjian.trim()}
+              >
+                {saving ? 'Menyimpan...' : (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Buat & Tambah Soal
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                      <polyline points="12,5 19,12 12,19"/>
+                    </svg>
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </main>
