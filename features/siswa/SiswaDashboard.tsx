@@ -10,6 +10,8 @@ import type { JadwalUjian, Ujian } from '@/types';
 export default function SiswaDashboard() {
   const { user, siswa, logout, isLoading } = useAuth();
   const router = useRouter();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [jadwalAktif, setJadwalAktif] = useState<JadwalUjian[]>([]);
   const [ujianMap, setUjianMap] = useState<Record<string, Ujian>>({});
   const [kelasMap, setKelasMap] = useState<Record<string, string>>({});
@@ -23,6 +25,7 @@ export default function SiswaDashboard() {
       return;
     }
     const currentSiswaId = siswa.id;
+    setIsRefreshing(true);
     Promise.all([
       fetch(`/api/jadwal?siswaId=${currentSiswaId}`),
       fetch('/api/ujian'),
@@ -51,13 +54,13 @@ export default function SiswaDashboard() {
           .then(sess => ({ jadwalId: j.id, status: sess?.status ?? null }))
           .catch(() => ({ jadwalId: j.id, status: null }))
       );
-      Promise.all(sessionFetches).then(results => {
-        const sm: Record<string, string | null> = {};
-        results.forEach(({ jadwalId, status }) => { sm[jadwalId] = status; });
-        setSessionStatusMap(sm);
-      });
-    }).catch(console.error);
-  }, [isLoading, user, siswa, router]);
+      // FIX: await nested Promise.all agar tidak jadi floating promise
+      const results = await Promise.all(sessionFetches);
+      const sm: Record<string, string | null> = {};
+      results.forEach(({ jadwalId, status }) => { sm[jadwalId] = status; });
+      setSessionStatusMap(sm);
+    }).catch(console.error).finally(() => setIsRefreshing(false));
+  }, [isLoading, user, siswa, router, refreshKey]);
 
   if (isLoading || !user || !siswa) return null;
 
@@ -77,6 +80,18 @@ export default function SiswaDashboard() {
         </div>
         <div className="topbar-center">
           <ThemeToggle />
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setRefreshKey(k => k + 1)}
+            aria-label="Muat ulang halaman"
+            title="Muat ulang"
+            style={{ marginLeft: '0.5rem' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
         </div>
         <div className="topbar-right">
           <div className="topbar-user">
@@ -128,7 +143,27 @@ export default function SiswaDashboard() {
                       <div>
                         <div style={{ fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.25rem' }}>
                           {ujian?.nama_ujian ?? 'Ujian'}
-                        </div>
+      {/* Loading overlay saat reload */}
+      {isRefreshing && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: '1rem',
+        }}>
+          <div style={{
+            width: 48, height: 48,
+            border: '4px solid rgba(255,255,255,0.3)',
+            borderTopColor: '#fff',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }} />
+          <span style={{ color: '#fff', fontSize: '1.125rem', fontWeight: 600 }}>Sabar yaa!</span>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
+    </div>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{ujian?.jenis_ujian ?? '-'}</div>
                       </div>
                       <span className={statusBadgeClass(jadwal.status_publikasi)}>{jadwal.status_publikasi}</span>

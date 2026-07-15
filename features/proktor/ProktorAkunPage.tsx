@@ -68,7 +68,10 @@ export default function ProktorAkunPage() {
 
   function loadData() {
     fetch('/api/akun')
-      .then(r => r.json())
+      .then(async r => {
+        if (!r.ok) throw new Error(`API error ${r.status}`);
+        return r.json();
+      })
       .then(akun => {
         const map: Record<string, User> = {};
         (akun.profiles ?? []).forEach((p: User) => { map[p.id] = p; });
@@ -77,7 +80,10 @@ export default function ProktorAkunPage() {
         setGuruList(akun.gurus ?? []);
         setKelasList(akun.kelas ?? []);
       })
-      .catch(console.error);
+      .catch(err => {
+        console.error('loadData gagal:', err);
+        setToast({ msg: 'Gagal memuat data akun.', type: 'error' });
+      });
   }
 
   // ── Siswa handlers ─────────────────────────────────────────
@@ -101,6 +107,9 @@ export default function ProktorAkunPage() {
     if (!siswForm.username.trim()) { setError('Username wajib diisi.'); return; }
     if (mode === 'tambah') {
       if (!siswForm.password.trim()) { setError('Password wajib diisi.'); return; }
+      if (siswForm.password.trim().length < 6) { setError('Password minimal 6 karakter.'); return; }
+    } else {
+      if (siswForm.password.trim() && siswForm.password.trim().length < 6) { setError('Password minimal 6 karakter.'); return; }
     }
     setSavingAkun(true);
     try {
@@ -113,10 +122,13 @@ export default function ProktorAkunPage() {
         const data = await res.json();
         if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
       } else {
+        const patchBody: Record<string, string> = { userId: editId, nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas };
+        // Hanya kirim password jika diisi — kosong = tidak diubah
+        if (siswForm.password.trim()) patchBody.password = siswForm.password.trim();
         const res = await fetch('/api/akun', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: editId, nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas }),
+          body: JSON.stringify(patchBody),
         });
         const data = await res.json();
         if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
@@ -168,6 +180,9 @@ export default function ProktorAkunPage() {
     if (!guruForm.username.trim()) { setError('Username wajib diisi.'); return; }
     if (mode === 'tambah') {
       if (!guruForm.password.trim()) { setError('Password wajib diisi.'); return; }
+      if (guruForm.password.trim().length < 6) { setError('Password minimal 6 karakter.'); return; }
+    } else {
+      if (guruForm.password.trim() && guruForm.password.trim().length < 6) { setError('Password minimal 6 karakter.'); return; }
     }
     setSavingAkun(true);
     try {
@@ -180,10 +195,13 @@ export default function ProktorAkunPage() {
         const data = await res.json();
         if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
       } else {
+        const patchBody: Record<string, string> = { userId: editId, nama: guruForm.nama.trim() };
+        // Hanya kirim password jika diisi — kosong = tidak diubah
+        if (guruForm.password.trim()) patchBody.password = guruForm.password.trim();
         const res = await fetch('/api/akun', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: editId, nama: guruForm.nama.trim() }),
+          body: JSON.stringify(patchBody),
         });
         const data = await res.json();
         if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
@@ -452,8 +470,8 @@ export default function ProktorAkunPage() {
                 onChange={e => setImportText(e.target.value)}
               />
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-                <button className="btn btn-primary" onClick={handleImportPaste} disabled={!importText.trim()}>
-                  Proses Import
+                <button className="btn btn-primary" onClick={handleImportPaste} disabled={!importText.trim() || importing}>
+                  {importing ? 'Memproses...' : 'Proses Import'}
                 </button>
                 <button className="btn btn-ghost" onClick={() => { setImportText(''); setImportErrors([]); setImportSuccess(0); }}>
                   Bersihkan

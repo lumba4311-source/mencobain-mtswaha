@@ -204,13 +204,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Logout ────────────────────────────────────────────────────
   async function logout(): Promise<void> {
     authLog('REDIRECT_LOGIN', 'Manual logout');
-    // Revoke server-side session dan hapus cookie
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    // Sign out dari browser client (bersihkan localStorage)
-    await supabaseRef.current.auth.signOut();
-    setUser(null);
-    setSiswa(null);
-    setGuru(null);
+    try {
+      // Revoke server-side session dan hapus cookie
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      // Sign out dari browser client (bersihkan localStorage)
+      await supabaseRef.current.auth.signOut();
+    } catch (e) {
+      // Abaikan error network — tetap clear state lokal
+      authError('NETWORK_ERROR', `logout fetch/signOut threw: ${e}`);
+    } finally {
+      // Selalu clear state — termasuk saat network error
+      setUser(null);
+      setSiswa(null);
+      setGuru(null);
+      setIsLoading(false);
+    }
   }
 
   return (

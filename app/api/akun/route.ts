@@ -121,6 +121,9 @@ export async function PATCH(req: NextRequest) {
 
     // Reset password di Supabase Auth
     if (password !== undefined) {
+      if (password.length < 6) {
+        return NextResponse.json({ error: 'Password minimal 6 karakter.' }, { status: 422 });
+      }
       const { error: authErr } = await supabase.auth.admin.updateUserById(userId, { password });
       if (authErr) throw authErr;
     }

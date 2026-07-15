@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
-// Simpan di /app/uploads/ — di luar public/ agar bisa ditulis di runtime
-// Volume di-mount ke host agar persistent
-const UPLOAD_DIR = '/app/uploads';
+// Cross-platform: simpan di <project-root>/uploads/
+// Di production (Docker/Linux) ini akan jadi /app/uploads via volume mount
+const UPLOAD_DIR = resolve(process.cwd(), 'uploads');
 
 export async function POST(req: NextRequest) {
   try {

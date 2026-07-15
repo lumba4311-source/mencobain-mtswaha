@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
-import { join, extname } from 'path';
+import { join, resolve, extname } from 'path';
 
-const UPLOAD_DIR = '/app/uploads';
+// Cross-platform: baca dari <project-root>/uploads/
+const UPLOAD_DIR = resolve(process.cwd(), 'uploads');
 
 const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -19,9 +20,9 @@ export async function GET(
 ) {
   try {
     const { path } = await context.params;
-    const filePath = join(UPLOAD_DIR, ...path);
+    const filePath = resolve(join(UPLOAD_DIR, ...path));
 
-    // Cegah path traversal
+    // Cegah path traversal — resolve dulu baru bandingkan
     if (!filePath.startsWith(UPLOAD_DIR)) {
       return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
     }

@@ -49,6 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ uji
     const toInsert = soals.map((s: {
       nomor: number; pertanyaan: string;
       opsi_a: string; opsi_b: string; opsi_c: string; opsi_d: string;
+      opsi_a_img?: string; opsi_b_img?: string; opsi_c_img?: string; opsi_d_img?: string;
       jawaban_benar: string; bobot: number; gambar_url?: string;
     }) => ({
       id_ujian: ujianId,
@@ -58,6 +59,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ uji
       opsi_b: s.opsi_b,
       opsi_c: s.opsi_c,
       opsi_d: s.opsi_d,
+      opsi_a_img: s.opsi_a_img ?? null,
+      opsi_b_img: s.opsi_b_img ?? null,
+      opsi_c_img: s.opsi_c_img ?? null,
+      opsi_d_img: s.opsi_d_img ?? null,
       jawaban_benar: s.jawaban_benar,
       bobot: s.bobot,
       gambar_url: s.gambar_url ?? null,

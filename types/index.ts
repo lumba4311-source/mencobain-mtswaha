@@ -65,6 +65,10 @@ export interface Soal {
   opsi_b: string;
   opsi_c: string;
   opsi_d: string;
+  opsi_a_img?: string; // gambar opsional untuk opsi A
+  opsi_b_img?: string; // gambar opsional untuk opsi B
+  opsi_c_img?: string; // gambar opsional untuk opsi C
+  opsi_d_img?: string; // gambar opsional untuk opsi D
   jawaban_benar: JawabanBenar;
   bobot: number;
   gambar_url?: string;

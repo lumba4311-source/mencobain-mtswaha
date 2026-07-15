@@ -76,9 +76,13 @@ erDiagram
         text opsi_b
         text opsi_c
         text opsi_d
+        text opsi_a_img "nullable"
+        text opsi_b_img "nullable"
+        text opsi_c_img "nullable"
+        text opsi_d_img "nullable"
         jawaban_benar_enum jawaban_benar
         numeric bobot
-        text gambar_url
+        text gambar_url "nullable"
         timestamptz created_at
     }
 

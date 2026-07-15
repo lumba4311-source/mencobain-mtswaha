@@ -466,8 +466,15 @@ export default function ExamPage() {
     return map[opsiKey];
   }
 
+  function getOpsiImg(soal: Soal, opsiKey: JawabanBenar): string | undefined {
+    const map: Record<JawabanBenar, string | undefined> = {
+      A: soal.opsi_a_img, B: soal.opsi_b_img, C: soal.opsi_c_img, D: soal.opsi_d_img, E: undefined,
+    };
+    return map[opsiKey];
+  }
+
   // Get shuffled opsi for current soal
-  function getShuffledOpsi(soal: Soal): { displayKey: JawabanBenar; originalKey: JawabanBenar; text: string }[] {
+  function getShuffledOpsi(soal: Soal): { displayKey: JawabanBenar; originalKey: JawabanBenar; text: string; img?: string }[] {
     if (!session) return [];
     const opsiUrutan = session.urutan_opsi[soal.id] ?? (['A','B','C','D','E'] as JawabanBenar[]);
     const displayKeys: JawabanBenar[] = ['A','B','C','D','E'];
@@ -476,6 +483,7 @@ export default function ExamPage() {
       displayKey,
       originalKey: opsiUrutan[idx],
       text: getOpsiText(soal, opsiUrutan[idx]),
+      img: getOpsiImg(soal, opsiUrutan[idx]),
     })).filter(o => o.text.trim() !== '');
   }
 
@@ -633,15 +641,34 @@ export default function ExamPage() {
 
           {/* Opsi */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-            {shuffledOpsi.map(({ displayKey, text }) => (
+            {shuffledOpsi.map(({ displayKey, text, img }) => (
               <button
                 key={displayKey}
                 className={`opsi-item${selectedDisplayKey === displayKey ? ' selected' : ''}`}
                 onClick={() => handleSelectJawaban(currentSoal.id, displayKey)}
                 disabled={submitted}
+                style={{ alignItems: img ? 'flex-start' : undefined }}
               >
                 <span className="opsi-label">{displayKey}</span>
-                <span style={{ flex: 1, textAlign: 'left' }}>{text}</span>
+                <span style={{ flex: 1, textAlign: 'left' }}>
+                  <span>{text}</span>
+                  {img && (
+                    <img
+                      src={img}
+                      alt={`Gambar opsi ${displayKey}`}
+                      style={{
+                        display: 'block',
+                        marginTop: '0.5rem',
+                        maxWidth: '100%',
+                        maxHeight: 160,
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-surface-raised)',
+                      }}
+                    />
+                  )}
+                </span>
               </button>
             ))}
           </div>
