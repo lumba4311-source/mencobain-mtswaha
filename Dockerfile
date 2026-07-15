@@ -1,16 +1,20 @@
-# ── Stage 1: deps ────────────────────────────────────────────
-FROM node:22-alpine AS deps
+# ── Stage 1: builder ─────────────────────────────────────────
+FROM node:22-slim AS builder
 WORKDIR /app
 
+# Copy package files
 COPY package.json package-lock.json ./
-RUN npm install --legacy-peer-deps
 
-# ── Stage 2: builder ─────────────────────────────────────────
-FROM node:22-alpine AS builder
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
+# Copy all codebase (termasuk node_modules jika ada di host)
 COPY . .
+
+# Matikan Next.js telemetry saat build
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Cek apakah node_modules sudah ada (copy dari host), jika belum lakukan install
+RUN if [ ! -d node_modules ]; then \
+      npm install --legacy-peer-deps; \
+    fi
 
 # Build args yang diinjek saat docker build
 ARG NEXT_PUBLIC_SUPABASE_URL
@@ -23,21 +27,21 @@ ENV NEXT_PUBLIC_AUTH_DEBUG=$NEXT_PUBLIC_AUTH_DEBUG
 
 RUN npm run build
 
-# ── Stage 3: runner ──────────────────────────────────────────
-FROM node:22-alpine AS runner
+# ── Stage 2: runner ──────────────────────────────────────────
+FROM node:22-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 -g nodejs nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Buat direktori uploads dengan owner nextjs agar writable saat runtime
-# Volume ecbt_uploads di-mount di sini — permission harus diset sebelum mount
 RUN mkdir -p /app/uploads && chown -R nextjs:nodejs /app/uploads
 
 USER nextjs

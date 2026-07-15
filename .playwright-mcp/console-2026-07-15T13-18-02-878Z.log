@@ -1,0 +1,3 @@
+[     229ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/jadwal:0
+[     235ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/ujian:0
+[     315ms] [ERROR] Gagal memuat data dashboard: salah satu API error @ http://localhost:3000/_next/static/chunks/1tu177zxc-tpr.js:0

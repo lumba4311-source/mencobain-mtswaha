@@ -17,6 +17,7 @@ services:
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - NEXT_PUBLIC_AUTH_DEBUG=${NEXT_PUBLIC_AUTH_DEBUG:-false}
+      - IS_DOCKER=true
     volumes:
       - ecbt_uploads:/app/uploads
     depends_on:
@@ -41,8 +42,7 @@ services:
     volumes:
       - ecbt_db_data:/var/lib/postgresql/data
       - ./supabase/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql
-      - ./supabase/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./supabase/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./supabase:/tmp/supabase:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s

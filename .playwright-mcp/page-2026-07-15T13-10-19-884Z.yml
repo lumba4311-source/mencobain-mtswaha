@@ -1,0 +1,310 @@
+- generic [active] [ref=f3e1]:
+  - alert [ref=f3e39]
+  - generic [ref=f3e178]:
+    - banner [ref=f3e179]:
+      - generic [ref=f3e180]:
+        - img "Logo MTS WAHA" [ref=f3e181]
+        - generic [ref=f3e182]: E-CBT MTS WAHA
+        - generic [ref=f3e184]: Kelola Akun
+      - button "Beralih ke mode terang" [ref=f3e186] [cursor=pointer]
+      - generic [ref=f3e190]:
+        - generic "Masuk sebagai Proktor Utama" [ref=f3e191]:
+          - generic [ref=f3e192]: P
+          - generic [ref=f3e193]: Proktor Utama
+        - button "Keluar dari aplikasi" [ref=f3e194] [cursor=pointer]: Keluar
+    - generic [ref=f3e198]:
+      - complementary "Navigasi utama" [ref=f3e199]:
+        - button "Ciutkan sidebar" [ref=f3e201] [cursor=pointer]
+        - generic [ref=f3e204]: Menu
+        - navigation "Menu proktor" [ref=f3e205]:
+          - link "Dashboard" [ref=f3e206] [cursor=pointer]:
+            - /url: /proktor/dashboard
+          - link "Monitoring Real-Time" [ref=f3e214] [cursor=pointer]:
+            - /url: /proktor/monitoring
+          - link "Kelola Jadwal" [ref=f3e219] [cursor=pointer]:
+            - /url: /proktor/jadwal
+          - link "Kelola Akun" [ref=f3e224] [cursor=pointer]:
+            - /url: /proktor/akun
+          - link "Hasil Ujian" [ref=f3e232] [cursor=pointer]:
+            - /url: /proktor/hasil
+        - generic [ref=f3e239]:
+          - generic [ref=f3e240]: P
+          - generic [ref=f3e241]:
+            - generic [ref=f3e242]: Proktor Utama
+            - generic [ref=f3e243]: proktor
+          - generic "Online" [ref=f3e244]
+      - main [ref=f3e245]:
+        - generic [ref=f3e246]:
+          - generic [ref=f3e247]:
+            - heading "Kelola Akun" [level=1] [ref=f3e248]
+            - paragraph [ref=f3e249]: Manajemen akun siswa dan guru
+          - generic [ref=f3e250]:
+            - button "Import Excel" [ref=f3e251] [cursor=pointer]
+            - button "+ Tambah Siswa" [ref=f3e252] [cursor=pointer]
+        - generic [ref=f3e253]:
+          - generic [ref=f3e254]:
+            - button "Siswa (28)" [ref=f3e255] [cursor=pointer]
+            - button "Guru (35)" [ref=f3e256] [cursor=pointer]
+          - generic [ref=f3e257]:
+            - textbox "Cari nama, kelas, username..." [ref=f3e259]
+            - table [ref=f3e262]:
+              - rowgroup [ref=f3e263]:
+                - row [ref=f3e264]:
+                  - columnheader "Kelas ↑" [ref=f3e265] [cursor=pointer]
+                  - columnheader "Nama ↕" [ref=f3e266] [cursor=pointer]
+                  - columnheader "Username ↕" [ref=f3e267] [cursor=pointer]
+                  - columnheader "Password" [ref=f3e268]
+                  - columnheader "Aksi" [ref=f3e269]
+              - rowgroup [ref=f3e270]:
+                - row [ref=f3e271]:
+                  - cell "9A" [ref=f3e272]
+                  - cell "Siswa 240053" [ref=f3e274]
+                  - cell "240053" [ref=f3e275]
+                  - cell "240053@umbk" [ref=f3e276]
+                  - cell [ref=f3e277]:
+                    - generic [ref=f3e278]:
+                      - button "Edit" [ref=f3e279] [cursor=pointer]
+                      - button "Hapus" [ref=f3e280] [cursor=pointer]
+                - row [ref=f3e281]:
+                  - cell "9A" [ref=f3e282]
+                  - cell "Siswa 240104" [ref=f3e284]
+                  - cell "240104" [ref=f3e285]
+                  - cell "240104@umbk" [ref=f3e286]
+                  - cell [ref=f3e287]:
+                    - generic [ref=f3e288]:
+                      - button "Edit" [ref=f3e289] [cursor=pointer]
+                      - button "Hapus" [ref=f3e290] [cursor=pointer]
+                - row [ref=f3e291]:
+                  - cell "9A" [ref=f3e292]
+                  - cell "Siswa 240157" [ref=f3e294]
+                  - cell "240157" [ref=f3e295]
+                  - cell "240157@umbk" [ref=f3e296]
+                  - cell [ref=f3e297]:
+                    - generic [ref=f3e298]:
+                      - button "Edit" [ref=f3e299] [cursor=pointer]
+                      - button "Hapus" [ref=f3e300] [cursor=pointer]
+                - row [ref=f3e301]:
+                  - cell "9A" [ref=f3e302]
+                  - cell "Siswa 240198" [ref=f3e304]
+                  - cell "240198" [ref=f3e305]
+                  - cell "240198@umbk" [ref=f3e306]
+                  - cell [ref=f3e307]:
+                    - generic [ref=f3e308]:
+                      - button "Edit" [ref=f3e309] [cursor=pointer]
+                      - button "Hapus" [ref=f3e310] [cursor=pointer]
+                - row [ref=f3e311]:
+                  - cell "9B" [ref=f3e312]
+                  - cell "Siswa 240006" [ref=f3e314]
+                  - cell "240006" [ref=f3e315]
+                  - cell "240006@umbk" [ref=f3e316]
+                  - cell [ref=f3e317]:
+                    - generic [ref=f3e318]:
+                      - button "Edit" [ref=f3e319] [cursor=pointer]
+                      - button "Hapus" [ref=f3e320] [cursor=pointer]
+                - row [ref=f3e321]:
+                  - cell "9B" [ref=f3e322]
+                  - cell "Siswa 240054" [ref=f3e324]
+                  - cell "240054" [ref=f3e325]
+                  - cell "240054@umbk" [ref=f3e326]
+                  - cell [ref=f3e327]:
+                    - generic [ref=f3e328]:
+                      - button "Edit" [ref=f3e329] [cursor=pointer]
+                      - button "Hapus" [ref=f3e330] [cursor=pointer]
+                - row [ref=f3e331]:
+                  - cell "9B" [ref=f3e332]
+                  - cell "Siswa 240121" [ref=f3e334]
+                  - cell "240121" [ref=f3e335]
+                  - cell "240121@umbk" [ref=f3e336]
+                  - cell [ref=f3e337]:
+                    - generic [ref=f3e338]:
+                      - button "Edit" [ref=f3e339] [cursor=pointer]
+                      - button "Hapus" [ref=f3e340] [cursor=pointer]
+                - row [ref=f3e341]:
+                  - cell "9B" [ref=f3e342]
+                  - cell "Siswa 240168" [ref=f3e344]
+                  - cell "240168" [ref=f3e345]
+                  - cell "240168@umbk" [ref=f3e346]
+                  - cell [ref=f3e347]:
+                    - generic [ref=f3e348]:
+                      - button "Edit" [ref=f3e349] [cursor=pointer]
+                      - button "Hapus" [ref=f3e350] [cursor=pointer]
+                - row [ref=f3e351]:
+                  - cell "9C" [ref=f3e352]
+                  - cell "Siswa 240011" [ref=f3e354]
+                  - cell "240011" [ref=f3e355]
+                  - cell "240011@umbk" [ref=f3e356]
+                  - cell [ref=f3e357]:
+                    - generic [ref=f3e358]:
+                      - button "Edit" [ref=f3e359] [cursor=pointer]
+                      - button "Hapus" [ref=f3e360] [cursor=pointer]
+                - row [ref=f3e361]:
+                  - cell "9C" [ref=f3e362]
+                  - cell "Siswa 240057" [ref=f3e364]
+                  - cell "240057" [ref=f3e365]
+                  - cell "240057@umbk" [ref=f3e366]
+                  - cell [ref=f3e367]:
+                    - generic [ref=f3e368]:
+                      - button "Edit" [ref=f3e369] [cursor=pointer]
+                      - button "Hapus" [ref=f3e370] [cursor=pointer]
+                - row [ref=f3e371]:
+                  - cell "9C" [ref=f3e372]
+                  - cell "Siswa 240136" [ref=f3e374]
+                  - cell "240136" [ref=f3e375]
+                  - cell "240136@umbk" [ref=f3e376]
+                  - cell [ref=f3e377]:
+                    - generic [ref=f3e378]:
+                      - button "Edit" [ref=f3e379] [cursor=pointer]
+                      - button "Hapus" [ref=f3e380] [cursor=pointer]
+                - row [ref=f3e381]:
+                  - cell "9C" [ref=f3e382]
+                  - cell "Siswa 240177" [ref=f3e384]
+                  - cell "240177" [ref=f3e385]
+                  - cell "240177@umbk" [ref=f3e386]
+                  - cell [ref=f3e387]:
+                    - generic [ref=f3e388]:
+                      - button "Edit" [ref=f3e389] [cursor=pointer]
+                      - button "Hapus" [ref=f3e390] [cursor=pointer]
+                - row [ref=f3e391]:
+                  - cell "9D" [ref=f3e392]
+                  - cell "Siswa 240022" [ref=f3e394]
+                  - cell "240022" [ref=f3e395]
+                  - cell "240022@umbk" [ref=f3e396]
+                  - cell [ref=f3e397]:
+                    - generic [ref=f3e398]:
+                      - button "Edit" [ref=f3e399] [cursor=pointer]
+                      - button "Hapus" [ref=f3e400] [cursor=pointer]
+                - row [ref=f3e401]:
+                  - cell "9D" [ref=f3e402]
+                  - cell "Siswa 240059" [ref=f3e404]
+                  - cell "240059" [ref=f3e405]
+                  - cell "240059@umbk" [ref=f3e406]
+                  - cell [ref=f3e407]:
+                    - generic [ref=f3e408]:
+                      - button "Edit" [ref=f3e409] [cursor=pointer]
+                      - button "Hapus" [ref=f3e410] [cursor=pointer]
+                - row [ref=f3e411]:
+                  - cell "9D" [ref=f3e412]
+                  - cell "Siswa 240147" [ref=f3e414]
+                  - cell "240147" [ref=f3e415]
+                  - cell "240147@umbk" [ref=f3e416]
+                  - cell [ref=f3e417]:
+                    - generic [ref=f3e418]:
+                      - button "Edit" [ref=f3e419] [cursor=pointer]
+                      - button "Hapus" [ref=f3e420] [cursor=pointer]
+                - row [ref=f3e421]:
+                  - cell "9D" [ref=f3e422]
+                  - cell "Siswa 240184" [ref=f3e424]
+                  - cell "240184" [ref=f3e425]
+                  - cell "240184@umbk" [ref=f3e426]
+                  - cell [ref=f3e427]:
+                    - generic [ref=f3e428]:
+                      - button "Edit" [ref=f3e429] [cursor=pointer]
+                      - button "Hapus" [ref=f3e430] [cursor=pointer]
+                - row [ref=f3e431]:
+                  - cell "9E" [ref=f3e432]
+                  - cell "Siswa 240026" [ref=f3e434]
+                  - cell "240026" [ref=f3e435]
+                  - cell "240026@umbk" [ref=f3e436]
+                  - cell [ref=f3e437]:
+                    - generic [ref=f3e438]:
+                      - button "Edit" [ref=f3e439] [cursor=pointer]
+                      - button "Hapus" [ref=f3e440] [cursor=pointer]
+                - row [ref=f3e441]:
+                  - cell "9E" [ref=f3e442]
+                  - cell "Siswa 240069" [ref=f3e444]
+                  - cell "240069" [ref=f3e445]
+                  - cell "240069@umbk" [ref=f3e446]
+                  - cell [ref=f3e447]:
+                    - generic [ref=f3e448]:
+                      - button "Edit" [ref=f3e449] [cursor=pointer]
+                      - button "Hapus" [ref=f3e450] [cursor=pointer]
+                - row [ref=f3e451]:
+                  - cell "9E" [ref=f3e452]
+                  - cell "Siswa 240150" [ref=f3e454]
+                  - cell "240150" [ref=f3e455]
+                  - cell "240150@umbk" [ref=f3e456]
+                  - cell [ref=f3e457]:
+                    - generic [ref=f3e458]:
+                      - button "Edit" [ref=f3e459] [cursor=pointer]
+                      - button "Hapus" [ref=f3e460] [cursor=pointer]
+                - row [ref=f3e461]:
+                  - cell "9E" [ref=f3e462]
+                  - cell "Siswa 240185" [ref=f3e464]
+                  - cell "240185" [ref=f3e465]
+                  - cell "240185@umbk" [ref=f3e466]
+                  - cell [ref=f3e467]:
+                    - generic [ref=f3e468]:
+                      - button "Edit" [ref=f3e469] [cursor=pointer]
+                      - button "Hapus" [ref=f3e470] [cursor=pointer]
+                - row [ref=f3e471]:
+                  - cell "9F" [ref=f3e472]
+                  - cell "Siswa 240027" [ref=f3e474]
+                  - cell "240027" [ref=f3e475]
+                  - cell "240027@umbk" [ref=f3e476]
+                  - cell [ref=f3e477]:
+                    - generic [ref=f3e478]:
+                      - button "Edit" [ref=f3e479] [cursor=pointer]
+                      - button "Hapus" [ref=f3e480] [cursor=pointer]
+                - row [ref=f3e481]:
+                  - cell "9F" [ref=f3e482]
+                  - cell "Siswa 240079" [ref=f3e484]
+                  - cell "240079" [ref=f3e485]
+                  - cell "240079@umbk" [ref=f3e486]
+                  - cell [ref=f3e487]:
+                    - generic [ref=f3e488]:
+                      - button "Edit" [ref=f3e489] [cursor=pointer]
+                      - button "Hapus" [ref=f3e490] [cursor=pointer]
+                - row [ref=f3e491]:
+                  - cell "9F" [ref=f3e492]
+                  - cell "Siswa 240154" [ref=f3e494]
+                  - cell "240154" [ref=f3e495]
+                  - cell "240154@umbk" [ref=f3e496]
+                  - cell [ref=f3e497]:
+                    - generic [ref=f3e498]:
+                      - button "Edit" [ref=f3e499] [cursor=pointer]
+                      - button "Hapus" [ref=f3e500] [cursor=pointer]
+                - row [ref=f3e501]:
+                  - cell "9F" [ref=f3e502]
+                  - cell "Siswa 240186" [ref=f3e504]
+                  - cell "240186" [ref=f3e505]
+                  - cell "240186@umbk" [ref=f3e506]
+                  - cell [ref=f3e507]:
+                    - generic [ref=f3e508]:
+                      - button "Edit" [ref=f3e509] [cursor=pointer]
+                      - button "Hapus" [ref=f3e510] [cursor=pointer]
+                - row [ref=f3e511]:
+                  - cell "9G" [ref=f3e512]
+                  - cell "Siswa 240036" [ref=f3e514]
+                  - cell "240036" [ref=f3e515]
+                  - cell "240036@umbk" [ref=f3e516]
+                  - cell [ref=f3e517]:
+                    - generic [ref=f3e518]:
+                      - button "Edit" [ref=f3e519] [cursor=pointer]
+                      - button "Hapus" [ref=f3e520] [cursor=pointer]
+                - row [ref=f3e521]:
+                  - cell "9G" [ref=f3e522]
+                  - cell "Siswa 240095" [ref=f3e524]
+                  - cell "240095" [ref=f3e525]
+                  - cell "240095@umbk" [ref=f3e526]
+                  - cell [ref=f3e527]:
+                    - generic [ref=f3e528]:
+                      - button "Edit" [ref=f3e529] [cursor=pointer]
+                      - button "Hapus" [ref=f3e530] [cursor=pointer]
+                - row [ref=f3e531]:
+                  - cell "9G" [ref=f3e532]
+                  - cell "Siswa 240155" [ref=f3e534]
+                  - cell "240155" [ref=f3e535]
+                  - cell "240155@umbk" [ref=f3e536]
+                  - cell [ref=f3e537]:
+                    - generic [ref=f3e538]:
+                      - button "Edit" [ref=f3e539] [cursor=pointer]
+                      - button "Hapus" [ref=f3e540] [cursor=pointer]
+                - row [ref=f3e541]:
+                  - cell "9G" [ref=f3e542]
+                  - cell "Siswa 240195" [ref=f3e544]
+                  - cell "240195" [ref=f3e545]
+                  - cell "240195@umbk" [ref=f3e546]
+                  - cell [ref=f3e547]:
+                    - generic [ref=f3e548]:
+                      - button "Edit" [ref=f3e549] [cursor=pointer]
+                      - button "Hapus" [ref=f3e550] [cursor=pointer]

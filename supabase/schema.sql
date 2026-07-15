@@ -23,6 +23,7 @@ CREATE TABLE profiles (
   nama        TEXT NOT NULL,
   role        role_enum NOT NULL,
   status      status_akun_enum NOT NULL DEFAULT 'aktif',
+  password    TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

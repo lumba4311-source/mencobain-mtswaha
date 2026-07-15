@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import { join, resolve } from 'path';
+import { getAuthUser } from '@/lib/apiAuth';
 
 // Cross-platform: simpan di <project-root>/uploads/
 // Di production (Docker/Linux) ini akan jadi /app/uploads via volume mount
 const UPLOAD_DIR = resolve(process.cwd(), 'uploads');
 
 export async function POST(req: NextRequest) {
+  const auth = await getAuthUser(req);
+  if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+  if (!['guru', 'proktor', 'admin'].includes(auth.role))
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

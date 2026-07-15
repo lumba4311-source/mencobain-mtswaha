@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient, getDynamicSupabaseUrl } from './lib/supabase';
 
-const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseService = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const ACCESS_TOKEN_COOKIE  = 'umbk-access-token';
@@ -28,9 +28,7 @@ export async function middleware(req: NextRequest) {
   let newAccessToken: string | null = null;
   let newRefreshToken: string | null = null;
 
-  const supabase = createClient(supabaseUrl, supabaseService, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const supabase = createSupabaseServerClient();
 
   // 1. Validasi access token
   if (accessToken) {
@@ -44,7 +42,7 @@ export async function middleware(req: NextRequest) {
   if (!userId && refreshToken) {
     // Buat client dengan anon key untuk refreshSession
     const anonClient = createClient(
-      supabaseUrl,
+      getDynamicSupabaseUrl(true),
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );

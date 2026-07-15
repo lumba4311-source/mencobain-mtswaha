@@ -1,0 +1,12 @@
+[      90ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/auth/me:0
+[    8499ms] [ERROR] Access to fetch at 'http://localhost:8000/auth/v1/user' from origin 'http://localhost:3000' has been blocked by CORS policy: Request header field x-supabase-api-version is not allowed by Access-Control-Allow-Headers in preflight response. @ http://localhost:3000/login:0
+[    8500ms] [ERROR] Failed to load resource: net::ERR_FAILED @ http://localhost:8000/auth/v1/user:0
+[    8501ms] [ERROR] TypeError: Failed to fetch
+    at http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:11:40641
+    at rl (http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:11:46056)
+    at ro (http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:11:45584)
+    at rQ._getUser (http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:24:15271)
+    at rQ._setSession (http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:24:17450)
+    at rQ.setSession (http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:24:17029)
+    at async g (http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:28:7377)
+    at async y (http://localhost:3000/_next/static/chunks/0mo8n2_c1ptfd.js:1:3633) @ http://localhost:3000/_next/static/chunks/2g2ryxot1ybb2.js:10

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from './supabase';
 
 const ACCESS_TOKEN_COOKIE = 'umbk-access-token';
 
@@ -18,11 +18,7 @@ export async function getAuthUser(req: NextRequest): Promise<{ id: string; role:
 
   if (!token) return null;
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
+  const supabase = createSupabaseServerClient();
 
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return null;

@@ -50,8 +50,8 @@ GRANT ALL ON SCHEMA public TO postgres, supabase_admin, supabase_auth_admin, aut
 
 -- ── Set search_path untuk roles ──────────────────────────────
 ALTER ROLE supabase_auth_admin SET search_path = auth, public;
-ALTER ROLE authenticator SET search_path = auth, public;
-ALTER DATABASE postgres SET search_path = auth, public;
+ALTER ROLE authenticator SET search_path = public, auth;
+ALTER DATABASE postgres SET search_path = public, auth;
 
 -- ── Default privileges di public schema ──────────────────────
 ALTER DEFAULT PRIVILEGES IN SCHEMA public

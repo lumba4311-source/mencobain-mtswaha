@@ -12,6 +12,9 @@
 -- Aman dijalankan berulang kali — ON CONFLICT DO UPDATE.
 -- ============================================================
 
+-- Disable trigger temporarily to prevent it from crashing on empty metadata during bulk insert
+ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created;
+
 INSERT INTO auth.users (
   id, instance_id, email, encrypted_password,
   email_confirmed_at, created_at, updated_at,
@@ -347,3 +350,73 @@ ON CONFLICT (id) DO UPDATE SET
   email              = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
   updated_at         = NOW();
+
+-- Re-enable trigger
+ALTER TABLE auth.users ENABLE TRIGGER on_auth_user_created;
+
+-- ── Seed Profiles dari auth.users ────────────────────────────────
+INSERT INTO public.profiles (id, username, nama, role, status, password)
+SELECT
+  id,
+  split_part(email, '@', 1) AS username,
+  CASE
+    WHEN email = 'proktor1@umbk.local' THEN 'Proktor Utama'
+    WHEN email LIKE '240%' THEN 'Siswa ' || split_part(email, '@', 1)
+    ELSE 'Guru ' || split_part(email, '@', 1)
+  END AS nama,
+  CASE
+    WHEN email = 'proktor1@umbk.local' THEN 'proktor'::role_enum
+    WHEN email LIKE '240%' THEN 'siswa'::role_enum
+    ELSE 'guru'::role_enum
+  END AS role,
+  'aktif'::status_akun_enum AS status,
+  CASE
+    WHEN email = 'proktor1@umbk.local' THEN 'ecbtmtswaha'
+    ELSE split_part(email, '@', 1) || '@umbk'
+  END AS password
+FROM auth.users
+WHERE email LIKE '%@umbk.local'
+ON CONFLICT (id) DO UPDATE SET
+  username = EXCLUDED.username,
+  nama = EXCLUDED.nama,
+  role = EXCLUDED.role,
+  password = EXCLUDED.password;
+
+-- ── Seed Gurus dari Profiles ─────────────────────────────────────
+INSERT INTO public.gurus (nip, nama, id_user)
+SELECT
+  username AS nip,
+  nama,
+  id AS id_user
+FROM public.profiles
+WHERE role = 'guru'
+ON CONFLICT (nip) DO NOTHING;
+
+-- ── Seed Siswas dari Profiles ─────────────────────────────────────
+INSERT INTO public.siswas (nis, nama, id_kelas, id_user)
+SELECT
+  username AS nis,
+  nama,
+  CASE (row_number() OVER (ORDER BY username) % 7)
+    WHEN 0 THEN '00000000-0000-0000-0000-000000000001'::uuid
+    WHEN 1 THEN '00000000-0000-0000-0000-000000000002'::uuid
+    WHEN 2 THEN '00000000-0000-0000-0000-000000000003'::uuid
+    WHEN 3 THEN '00000000-0000-0000-0000-000000000004'::uuid
+    WHEN 4 THEN '00000000-0000-0000-0000-000000000005'::uuid
+    WHEN 5 THEN '00000000-0000-0000-0000-000000000006'::uuid
+    ELSE '00000000-0000-0000-0000-000000000007'::uuid
+  END AS id_kelas,
+  id AS id_user
+FROM public.profiles
+WHERE role = 'siswa'
+ON CONFLICT (nis) DO NOTHING;
+
+-- Fix GoTrue scanner NULL-to-string scan errors by ensuring token columns are empty strings instead of NULL
+UPDATE auth.users
+SET
+  confirmation_token = COALESCE(confirmation_token, ''),
+  recovery_token = COALESCE(recovery_token, ''),
+  email_change = COALESCE(email_change, ''),
+  email_change_token_new = COALESCE(email_change_token_new, ''),
+  email_change_token_current = COALESCE(email_change_token_current, ''),
+  phone_change_token = COALESCE(phone_change_token, '');

@@ -1,0 +1,337 @@
+- generic [ref=f3e1]:
+  - alert [ref=f3e39]
+  - generic [ref=f3e178]:
+    - banner [ref=f3e179]:
+      - generic [ref=f3e180]:
+        - img "Logo MTS WAHA" [ref=f3e181]
+        - generic [ref=f3e182]: E-CBT MTS WAHA
+        - generic [ref=f3e184]: Kelola Akun
+      - button "Beralih ke mode terang" [ref=f3e186] [cursor=pointer]
+      - generic [ref=f3e190]:
+        - generic "Masuk sebagai Proktor Utama" [ref=f3e191]:
+          - generic [ref=f3e192]: P
+          - generic [ref=f3e193]: Proktor Utama
+        - button "Keluar dari aplikasi" [ref=f3e194] [cursor=pointer]: Keluar
+    - generic [ref=f3e198]:
+      - complementary "Navigasi utama" [ref=f3e199]:
+        - button "Ciutkan sidebar" [ref=f3e201] [cursor=pointer]
+        - generic [ref=f3e204]: Menu
+        - navigation "Menu proktor" [ref=f3e205]:
+          - link "Dashboard" [ref=f3e206] [cursor=pointer]:
+            - /url: /proktor/dashboard
+          - link "Monitoring Real-Time" [ref=f3e214] [cursor=pointer]:
+            - /url: /proktor/monitoring
+          - link "Kelola Jadwal" [ref=f3e219] [cursor=pointer]:
+            - /url: /proktor/jadwal
+          - link "Kelola Akun" [ref=f3e224] [cursor=pointer]:
+            - /url: /proktor/akun
+          - link "Hasil Ujian" [ref=f3e232] [cursor=pointer]:
+            - /url: /proktor/hasil
+        - generic [ref=f3e239]:
+          - generic [ref=f3e240]: P
+          - generic [ref=f3e241]:
+            - generic [ref=f3e242]: Proktor Utama
+            - generic [ref=f3e243]: proktor
+          - generic "Online" [ref=f3e244]
+      - main [ref=f3e245]:
+        - generic [ref=f3e246]:
+          - generic [ref=f3e247]:
+            - heading "Kelola Akun" [level=1] [ref=f3e248]
+            - paragraph [ref=f3e249]: Manajemen akun siswa dan guru
+          - generic [ref=f3e551]:
+            - button "Import Excel" [ref=f3e552] [cursor=pointer]
+            - button "+ Tambah Guru" [ref=f3e553] [cursor=pointer]
+        - generic [ref=f3e253]:
+          - generic [ref=f3e254]:
+            - button "Siswa (28)" [ref=f3e255] [cursor=pointer]
+            - button "Guru (35)" [active] [ref=f3e256] [cursor=pointer]
+          - generic [ref=f3e554]:
+            - textbox "Cari nama atau username..." [ref=f3e556]
+            - table [ref=f3e559]:
+              - rowgroup [ref=f3e560]:
+                - row [ref=f3e561]:
+                  - columnheader "Nama ↕" [ref=f3e562] [cursor=pointer]
+                  - columnheader "Username ↕" [ref=f3e563] [cursor=pointer]
+                  - columnheader "Password" [ref=f3e564]
+                  - columnheader "Aksi" [ref=f3e565]
+              - rowgroup [ref=f3e566]:
+                - row [ref=f3e567]:
+                  - cell "Guru 102008" [ref=f3e568]
+                  - cell "102008" [ref=f3e569]
+                  - cell "102008@umbk" [ref=f3e570]
+                  - cell [ref=f3e571]:
+                    - generic [ref=f3e572]:
+                      - button "Edit" [ref=f3e573] [cursor=pointer]
+                      - button "Hapus" [ref=f3e574] [cursor=pointer]
+                - row [ref=f3e575]:
+                  - cell "Guru 111009" [ref=f3e576]
+                  - cell "111009" [ref=f3e577]
+                  - cell "111009@umbk" [ref=f3e578]
+                  - cell [ref=f3e579]:
+                    - generic [ref=f3e580]:
+                      - button "Edit" [ref=f3e581] [cursor=pointer]
+                      - button "Hapus" [ref=f3e582] [cursor=pointer]
+                - row [ref=f3e583]:
+                  - cell "Guru 12003" [ref=f3e584]
+                  - cell "12003" [ref=f3e585]
+                  - cell "12003@umbk" [ref=f3e586]
+                  - cell [ref=f3e587]:
+                    - generic [ref=f3e588]:
+                      - button "Edit" [ref=f3e589] [cursor=pointer]
+                      - button "Hapus" [ref=f3e590] [cursor=pointer]
+                - row [ref=f3e591]:
+                  - cell "Guru 121013" [ref=f3e592]
+                  - cell "121013" [ref=f3e593]
+                  - cell "121013@umbk" [ref=f3e594]
+                  - cell [ref=f3e595]:
+                    - generic [ref=f3e596]:
+                      - button "Edit" [ref=f3e597] [cursor=pointer]
+                      - button "Hapus" [ref=f3e598] [cursor=pointer]
+                - row [ref=f3e599]:
+                  - cell "Guru 122012" [ref=f3e600]
+                  - cell "122012" [ref=f3e601]
+                  - cell "122012@umbk" [ref=f3e602]
+                  - cell [ref=f3e603]:
+                    - generic [ref=f3e604]:
+                      - button "Edit" [ref=f3e605] [cursor=pointer]
+                      - button "Hapus" [ref=f3e606] [cursor=pointer]
+                - row [ref=f3e607]:
+                  - cell "Guru 131016" [ref=f3e608]
+                  - cell "131016" [ref=f3e609]
+                  - cell "131016@umbk" [ref=f3e610]
+                  - cell [ref=f3e611]:
+                    - generic [ref=f3e612]:
+                      - button "Edit" [ref=f3e613] [cursor=pointer]
+                      - button "Hapus" [ref=f3e614] [cursor=pointer]
+                - row [ref=f3e615]:
+                  - cell "Guru 131017" [ref=f3e616]
+                  - cell "131017" [ref=f3e617]
+                  - cell "131017@umbk" [ref=f3e618]
+                  - cell [ref=f3e619]:
+                    - generic [ref=f3e620]:
+                      - button "Edit" [ref=f3e621] [cursor=pointer]
+                      - button "Hapus" [ref=f3e622] [cursor=pointer]
+                - row [ref=f3e623]:
+                  - cell "Guru 132014" [ref=f3e624]
+                  - cell "132014" [ref=f3e625]
+                  - cell "132014@umbk" [ref=f3e626]
+                  - cell [ref=f3e627]:
+                    - generic [ref=f3e628]:
+                      - button "Edit" [ref=f3e629] [cursor=pointer]
+                      - button "Hapus" [ref=f3e630] [cursor=pointer]
+                - row [ref=f3e631]:
+                  - cell "Guru 132015" [ref=f3e632]
+                  - cell "132015" [ref=f3e633]
+                  - cell "132015@umbk" [ref=f3e634]
+                  - cell [ref=f3e635]:
+                    - generic [ref=f3e636]:
+                      - button "Edit" [ref=f3e637] [cursor=pointer]
+                      - button "Hapus" [ref=f3e638] [cursor=pointer]
+                - row [ref=f3e639]:
+                  - cell "Guru 141020" [ref=f3e640]
+                  - cell "141020" [ref=f3e641]
+                  - cell "141020@umbk" [ref=f3e642]
+                  - cell [ref=f3e643]:
+                    - generic [ref=f3e644]:
+                      - button "Edit" [ref=f3e645] [cursor=pointer]
+                      - button "Hapus" [ref=f3e646] [cursor=pointer]
+                - row [ref=f3e647]:
+                  - cell "Guru 142018" [ref=f3e648]
+                  - cell "142018" [ref=f3e649]
+                  - cell "142018@umbk" [ref=f3e650]
+                  - cell [ref=f3e651]:
+                    - generic [ref=f3e652]:
+                      - button "Edit" [ref=f3e653] [cursor=pointer]
+                      - button "Hapus" [ref=f3e654] [cursor=pointer]
+                - row [ref=f3e655]:
+                  - cell "Guru 152026" [ref=f3e656]
+                  - cell "152026" [ref=f3e657]
+                  - cell "152026@umbk" [ref=f3e658]
+                  - cell [ref=f3e659]:
+                    - generic [ref=f3e660]:
+                      - button "Edit" [ref=f3e661] [cursor=pointer]
+                      - button "Hapus" [ref=f3e662] [cursor=pointer]
+                - row [ref=f3e663]:
+                  - cell "Guru 152027" [ref=f3e664]
+                  - cell "152027" [ref=f3e665]
+                  - cell "152027@umbk" [ref=f3e666]
+                  - cell [ref=f3e667]:
+                    - generic [ref=f3e668]:
+                      - button "Edit" [ref=f3e669] [cursor=pointer]
+                      - button "Hapus" [ref=f3e670] [cursor=pointer]
+                - row [ref=f3e671]:
+                  - cell "Guru 161029" [ref=f3e672]
+                  - cell "161029" [ref=f3e673]
+                  - cell "161029@umbk" [ref=f3e674]
+                  - cell [ref=f3e675]:
+                    - generic [ref=f3e676]:
+                      - button "Edit" [ref=f3e677] [cursor=pointer]
+                      - button "Hapus" [ref=f3e678] [cursor=pointer]
+                - row [ref=f3e679]:
+                  - cell "Guru 161030" [ref=f3e680]
+                  - cell "161030" [ref=f3e681]
+                  - cell "161030@umbk" [ref=f3e682]
+                  - cell [ref=f3e683]:
+                    - generic [ref=f3e684]:
+                      - button "Edit" [ref=f3e685] [cursor=pointer]
+                      - button "Hapus" [ref=f3e686] [cursor=pointer]
+                - row [ref=f3e687]:
+                  - cell "Guru 171036" [ref=f3e688]
+                  - cell "171036" [ref=f3e689]
+                  - cell "171036@umbk" [ref=f3e690]
+                  - cell [ref=f3e691]:
+                    - generic [ref=f3e692]:
+                      - button "Edit" [ref=f3e693] [cursor=pointer]
+                      - button "Hapus" [ref=f3e694] [cursor=pointer]
+                - row [ref=f3e695]:
+                  - cell "Guru 172037" [ref=f3e696]
+                  - cell "172037" [ref=f3e697]
+                  - cell "172037@umbk" [ref=f3e698]
+                  - cell [ref=f3e699]:
+                    - generic [ref=f3e700]:
+                      - button "Edit" [ref=f3e701] [cursor=pointer]
+                      - button "Hapus" [ref=f3e702] [cursor=pointer]
+                - row [ref=f3e703]:
+                  - cell "Guru 181039" [ref=f3e704]
+                  - cell "181039" [ref=f3e705]
+                  - cell "181039@umbk" [ref=f3e706]
+                  - cell [ref=f3e707]:
+                    - generic [ref=f3e708]:
+                      - button "Edit" [ref=f3e709] [cursor=pointer]
+                      - button "Hapus" [ref=f3e710] [cursor=pointer]
+                - row [ref=f3e711]:
+                  - cell "Guru 191046" [ref=f3e712]
+                  - cell "191046" [ref=f3e713]
+                  - cell "191046@umbk" [ref=f3e714]
+                  - cell [ref=f3e715]:
+                    - generic [ref=f3e716]:
+                      - button "Edit" [ref=f3e717] [cursor=pointer]
+                      - button "Hapus" [ref=f3e718] [cursor=pointer]
+                - row [ref=f3e719]:
+                  - cell "Guru 192040" [ref=f3e720]
+                  - cell "192040" [ref=f3e721]
+                  - cell "192040@umbk" [ref=f3e722]
+                  - cell [ref=f3e723]:
+                    - generic [ref=f3e724]:
+                      - button "Edit" [ref=f3e725] [cursor=pointer]
+                      - button "Hapus" [ref=f3e726] [cursor=pointer]
+                - row [ref=f3e727]:
+                  - cell "Guru 192041" [ref=f3e728]
+                  - cell "192041" [ref=f3e729]
+                  - cell "192041@umbk" [ref=f3e730]
+                  - cell [ref=f3e731]:
+                    - generic [ref=f3e732]:
+                      - button "Edit" [ref=f3e733] [cursor=pointer]
+                      - button "Hapus" [ref=f3e734] [cursor=pointer]
+                - row [ref=f3e735]:
+                  - cell "Guru 192042" [ref=f3e736]
+                  - cell "192042" [ref=f3e737]
+                  - cell "192042@umbk" [ref=f3e738]
+                  - cell [ref=f3e739]:
+                    - generic [ref=f3e740]:
+                      - button "Edit" [ref=f3e741] [cursor=pointer]
+                      - button "Hapus" [ref=f3e742] [cursor=pointer]
+                - row [ref=f3e743]:
+                  - cell "Guru 192043" [ref=f3e744]
+                  - cell "192043" [ref=f3e745]
+                  - cell "192043@umbk" [ref=f3e746]
+                  - cell [ref=f3e747]:
+                    - generic [ref=f3e748]:
+                      - button "Edit" [ref=f3e749] [cursor=pointer]
+                      - button "Hapus" [ref=f3e750] [cursor=pointer]
+                - row [ref=f3e751]:
+                  - cell "Guru 192048" [ref=f3e752]
+                  - cell "192048" [ref=f3e753]
+                  - cell "192048@umbk" [ref=f3e754]
+                  - cell [ref=f3e755]:
+                    - generic [ref=f3e756]:
+                      - button "Edit" [ref=f3e757] [cursor=pointer]
+                      - button "Hapus" [ref=f3e758] [cursor=pointer]
+                - row [ref=f3e759]:
+                  - cell "Guru 192049" [ref=f3e760]
+                  - cell "192049" [ref=f3e761]
+                  - cell "192049@umbk" [ref=f3e762]
+                  - cell [ref=f3e763]:
+                    - generic [ref=f3e764]:
+                      - button "Edit" [ref=f3e765] [cursor=pointer]
+                      - button "Hapus" [ref=f3e766] [cursor=pointer]
+                - row [ref=f3e767]:
+                  - cell "Guru 202050" [ref=f3e768]
+                  - cell "202050" [ref=f3e769]
+                  - cell "202050@umbk" [ref=f3e770]
+                  - cell [ref=f3e771]:
+                    - generic [ref=f3e772]:
+                      - button "Edit" [ref=f3e773] [cursor=pointer]
+                      - button "Hapus" [ref=f3e774] [cursor=pointer]
+                - row [ref=f3e775]:
+                  - cell "Guru 212052" [ref=f3e776]
+                  - cell "212052" [ref=f3e777]
+                  - cell "212052@umbk" [ref=f3e778]
+                  - cell [ref=f3e779]:
+                    - generic [ref=f3e780]:
+                      - button "Edit" [ref=f3e781] [cursor=pointer]
+                      - button "Hapus" [ref=f3e782] [cursor=pointer]
+                - row [ref=f3e783]:
+                  - cell "Guru 212053" [ref=f3e784]
+                  - cell "212053" [ref=f3e785]
+                  - cell "212053@umbk" [ref=f3e786]
+                  - cell [ref=f3e787]:
+                    - generic [ref=f3e788]:
+                      - button "Edit" [ref=f3e789] [cursor=pointer]
+                      - button "Hapus" [ref=f3e790] [cursor=pointer]
+                - row [ref=f3e791]:
+                  - cell "Guru 242054" [ref=f3e792]
+                  - cell "242054" [ref=f3e793]
+                  - cell "242054@umbk" [ref=f3e794]
+                  - cell [ref=f3e795]:
+                    - generic [ref=f3e796]:
+                      - button "Edit" [ref=f3e797] [cursor=pointer]
+                      - button "Hapus" [ref=f3e798] [cursor=pointer]
+                - row [ref=f3e799]:
+                  - cell "Guru 242055" [ref=f3e800]
+                  - cell "242055" [ref=f3e801]
+                  - cell "242055@umbk" [ref=f3e802]
+                  - cell [ref=f3e803]:
+                    - generic [ref=f3e804]:
+                      - button "Edit" [ref=f3e805] [cursor=pointer]
+                      - button "Hapus" [ref=f3e806] [cursor=pointer]
+                - row [ref=f3e807]:
+                  - cell "Guru 242056" [ref=f3e808]
+                  - cell "242056" [ref=f3e809]
+                  - cell "242056@umbk" [ref=f3e810]
+                  - cell [ref=f3e811]:
+                    - generic [ref=f3e812]:
+                      - button "Edit" [ref=f3e813] [cursor=pointer]
+                      - button "Hapus" [ref=f3e814] [cursor=pointer]
+                - row [ref=f3e815]:
+                  - cell "Guru 242057" [ref=f3e816]
+                  - cell "242057" [ref=f3e817]
+                  - cell "242057@umbk" [ref=f3e818]
+                  - cell [ref=f3e819]:
+                    - generic [ref=f3e820]:
+                      - button "Edit" [ref=f3e821] [cursor=pointer]
+                      - button "Hapus" [ref=f3e822] [cursor=pointer]
+                - row [ref=f3e823]:
+                  - cell "Guru 242068" [ref=f3e824]
+                  - cell "242068" [ref=f3e825]
+                  - cell "242068@umbk" [ref=f3e826]
+                  - cell [ref=f3e827]:
+                    - generic [ref=f3e828]:
+                      - button "Edit" [ref=f3e829] [cursor=pointer]
+                      - button "Hapus" [ref=f3e830] [cursor=pointer]
+                - row [ref=f3e831]:
+                  - cell "Guru 242069" [ref=f3e832]
+                  - cell "242069" [ref=f3e833]
+                  - cell "242069@umbk" [ref=f3e834]
+                  - cell [ref=f3e835]:
+                    - generic [ref=f3e836]:
+                      - button "Edit" [ref=f3e837] [cursor=pointer]
+                      - button "Hapus" [ref=f3e838] [cursor=pointer]
+                - row [ref=f3e839]:
+                  - cell "Guru 251070" [ref=f3e840]
+                  - cell "251070" [ref=f3e841]
+                  - cell "251070@umbk" [ref=f3e842]
+                  - cell [ref=f3e843]:
+                    - generic [ref=f3e844]:
+                      - button "Edit" [ref=f3e845] [cursor=pointer]
+                      - button "Hapus" [ref=f3e846] [cursor=pointer]

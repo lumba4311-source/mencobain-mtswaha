@@ -1,0 +1,75 @@
+- generic [active] [ref=f3e1]:
+  - alert [ref=f3e39]
+  - generic [ref=f3e40]:
+    - banner [ref=f3e41]:
+      - generic [ref=f3e42]:
+        - img "Logo MTS WAHA" [ref=f3e43]
+        - generic [ref=f3e44]: E-CBT MTS WAHA
+        - generic [ref=f3e46]: Dashboard
+      - button "Beralih ke mode terang" [ref=f3e48] [cursor=pointer]
+      - generic [ref=f3e52]:
+        - generic "Masuk sebagai Proktor Utama" [ref=f3e53]:
+          - generic [ref=f3e54]: P
+          - generic [ref=f3e55]: Proktor Utama
+        - button "Keluar dari aplikasi" [ref=f3e56] [cursor=pointer]: Keluar
+    - generic [ref=f3e60]:
+      - complementary "Navigasi utama" [ref=f3e61]:
+        - button "Ciutkan sidebar" [ref=f3e63] [cursor=pointer]
+        - generic [ref=f3e66]: Menu
+        - navigation "Menu proktor" [ref=f3e67]:
+          - link "Dashboard" [ref=f3e68] [cursor=pointer]:
+            - /url: /proktor/dashboard
+          - link "Monitoring Real-Time" [ref=f3e76] [cursor=pointer]:
+            - /url: /proktor/monitoring
+          - link "Kelola Jadwal" [ref=f3e81] [cursor=pointer]:
+            - /url: /proktor/jadwal
+          - link "Kelola Akun" [ref=f3e86] [cursor=pointer]:
+            - /url: /proktor/akun
+          - link "Hasil Ujian" [ref=f3e94] [cursor=pointer]:
+            - /url: /proktor/hasil
+        - generic [ref=f3e101]:
+          - generic [ref=f3e102]: P
+          - generic [ref=f3e103]:
+            - generic [ref=f3e104]: Proktor Utama
+            - generic [ref=f3e105]: proktor
+          - generic "Online" [ref=f3e106]
+      - main [ref=f3e107]:
+        - generic [ref=f3e108]:
+          - generic [ref=f3e109]:
+            - generic [ref=f3e110]:
+              - generic [ref=f3e111]: Halaman
+              - generic [ref=f3e114]: Dashboard
+            - heading "Dashboard" [level=1] [ref=f3e115]
+          - link "Buat Jadwal" [ref=f3e116] [cursor=pointer]:
+            - /url: /proktor/jadwal
+        - generic [ref=f3e118]:
+          - region "Ringkasan statistik" [ref=f3e119]:
+            - generic [ref=f3e120]: Ringkasan
+            - generic [ref=f3e121]:
+              - generic [ref=f3e122]:
+                - generic [ref=f3e123]: "28"
+                - generic [ref=f3e124]: Total Siswa
+              - generic [ref=f3e132]:
+                - generic [ref=f3e133]: "35"
+                - generic [ref=f3e134]: Total Guru
+              - generic [ref=f3e140]:
+                - generic [ref=f3e141]: "0"
+                - generic [ref=f3e142]: Total Ujian
+              - generic [ref=f3e148]:
+                - generic [ref=f3e149]: "0"
+                - generic [ref=f3e150]: Jadwal Published
+              - generic [ref=f3e155]:
+                - generic [ref=f3e156]: "0"
+                - generic [ref=f3e157]: Jadwal Draft
+          - region "Daftar jadwal ujian" [ref=f3e162]:
+            - generic [ref=f3e163]:
+              - generic [ref=f3e164]:
+                - generic [ref=f3e165]: Jadwal Ujian
+                - generic [ref=f3e166]: Belum ada jadwal
+              - link "Lihat semua" [ref=f3e167] [cursor=pointer]:
+                - /url: /proktor/jadwal
+            - generic [ref=f3e170]:
+              - paragraph [ref=f3e174]: Belum ada jadwal ujian
+              - paragraph [ref=f3e175]: Buat jadwal pertama untuk memulai.
+              - link "Buat Jadwal" [ref=f3e176] [cursor=pointer]:
+                - /url: /proktor/jadwal

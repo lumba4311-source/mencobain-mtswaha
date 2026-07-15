@@ -1,0 +1,36 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - img "Logo MTS WAHA"
+          - generic: CBT Examination System
+          - heading "MTS WAHA" [level=1]
+          - paragraph: "\"Belajar dengan Jujur,Raih Prestasi Terbaik\""
+          - generic:
+            - generic: Aman & Terpercaya
+            - generic: Penilaian Akurat
+    - generic [ref=f1e7]:
+      - generic [ref=f1e8]:
+        - button "Beralih ke mode terang" [ref=f1e10] [cursor=pointer]
+        - img "Logo MTS WAHA" [ref=f1e15]
+        - heading "Selamat Datang" [level=2] [ref=f1e16]
+        - paragraph [ref=f1e17]: Silakan masuk menggunakan akun yang telah diberikan.
+      - generic [ref=f1e18]:
+        - generic [ref=f1e19]:
+          - generic [ref=f1e20]: Username
+          - textbox "Username" [ref=f1e22]:
+            - /placeholder: Masukkan username
+        - generic [ref=f1e23]:
+          - generic [ref=f1e24]: Password
+          - generic [ref=f1e25]:
+            - textbox "Password" [ref=f1e26]:
+              - /placeholder: Masukkan password
+            - button "Tampilkan password" [ref=f1e27] [cursor=pointer]
+        - button "Masuk" [ref=f1e31] [cursor=pointer]
+      - generic [ref=f1e35]:
+        - generic [ref=f1e36]: Tahun Ajaran 2025 / 2026
+        - generic [ref=f1e37]: ·
+        - generic [ref=f1e38]: Sistem CBT v2.1.0
+  - alert [ref=f1e39]

@@ -1,0 +1,69 @@
+- generic [active] [ref=f1e1]:
+  - alert [ref=f1e39]
+  - generic [ref=f1e122]:
+    - banner [ref=f1e123]:
+      - generic [ref=f1e124]:
+        - img "Logo MTS WAHA" [ref=f1e125]
+        - generic [ref=f1e126]: E-CBT MTS WAHA
+        - generic [ref=f1e128]: Kelola Soal
+      - button "Beralih ke mode terang" [ref=f1e130] [cursor=pointer]
+      - generic [ref=f1e134]:
+        - generic "Masuk sebagai Guru 102008" [ref=f1e135]:
+          - generic [ref=f1e136]: G
+          - generic [ref=f1e137]: Guru 102008
+        - button "Keluar dari aplikasi" [ref=f1e138] [cursor=pointer]: Keluar
+    - main [ref=f1e142]:
+      - generic [ref=f1e143]:
+        - generic [ref=f1e144]:
+          - generic [ref=f1e145]:
+            - link "Dashboard" [ref=f1e146] [cursor=pointer]:
+              - /url: /guru/dashboard
+            - generic [ref=f1e149]: Kelola Soal
+          - generic [ref=f1e150]:
+            - heading "Ujian Akhir Semester Fisika" [level=1] [ref=f1e151]
+            - button "Edit nama ujian" [ref=f1e152] [cursor=pointer]
+          - generic [ref=f1e156]:
+            - generic [ref=f1e157]: 0 soal
+            - generic [ref=f1e158]: Acak soal & jawaban aktif
+        - link "Selesai" [ref=f1e159] [cursor=pointer]:
+          - /url: /guru/dashboard
+      - generic [ref=f1e160]:
+        - generic [ref=f1e161]: Tambah Soal Baru
+        - generic [ref=f1e162]:
+          - generic [ref=f1e163]: Gambar Soal (opsional)
+          - button "Klik untuk upload gambar (JPG, PNG, GIF — maks. 10MB)" [ref=f1e164] [cursor=pointer]
+        - generic [ref=f1e170]:
+          - generic [ref=f1e171]: Pertanyaan *
+          - textbox "Tulis pertanyaan di sini..." [ref=f1e172]
+        - generic [ref=f1e174]:
+          - generic [ref=f1e175]:
+            - generic [ref=f1e176]:
+              - generic [ref=f1e177] [cursor=pointer]:
+                - radio "A" [checked] [ref=f1e178]
+                - generic [ref=f1e179]: A
+              - textbox "Opsi A" [ref=f1e180]
+              - generic [ref=f1e181]: Jawaban benar
+            - button "Tambah gambar opsi A (opsional)" [ref=f1e183] [cursor=pointer]
+          - generic [ref=f1e189]:
+            - generic [ref=f1e190]:
+              - generic [ref=f1e191] [cursor=pointer]:
+                - radio "B" [ref=f1e192]
+                - generic [ref=f1e193]: B
+              - textbox "Opsi B" [ref=f1e194]
+            - button "Tambah gambar opsi B (opsional)" [ref=f1e196] [cursor=pointer]
+          - generic [ref=f1e202]:
+            - generic [ref=f1e203]:
+              - generic [ref=f1e204] [cursor=pointer]:
+                - radio "C" [ref=f1e205]
+                - generic [ref=f1e206]: C
+              - textbox "Opsi C" [ref=f1e207]
+            - button "Tambah gambar opsi C (opsional)" [ref=f1e209] [cursor=pointer]
+          - generic [ref=f1e215]:
+            - generic [ref=f1e216]:
+              - generic [ref=f1e217] [cursor=pointer]:
+                - radio "D" [ref=f1e218]
+                - generic [ref=f1e219]: D
+              - textbox "Opsi D" [ref=f1e220]
+            - button "Tambah gambar opsi D (opsional)" [ref=f1e222] [cursor=pointer]
+        - button "Tambah Soal" [ref=f1e229] [cursor=pointer]
+      - generic [ref=f1e230]: Belum ada soal. Tambahkan soal pertama di atas.

@@ -1,0 +1,37 @@
+- generic [active] [ref=f1e1]:
+  - alert [ref=f1e39]
+  - generic [ref=f1e73]:
+    - banner [ref=f1e74]:
+      - generic [ref=f1e75]:
+        - img "Logo MTS WAHA" [ref=f1e76]
+        - generic [ref=f1e77]: E-CBT MTS WAHA
+        - generic [ref=f1e79]: Buat Ujian
+      - button "Beralih ke mode terang" [ref=f1e81] [cursor=pointer]
+      - generic [ref=f1e85]:
+        - generic "Masuk sebagai Guru 102008" [ref=f1e86]:
+          - generic [ref=f1e87]: G
+          - generic [ref=f1e88]: Guru 102008
+        - button "Keluar dari aplikasi" [ref=f1e89] [cursor=pointer]: Keluar
+    - main [ref=f1e93]:
+      - generic [ref=f1e94]:
+        - generic [ref=f1e95]:
+          - generic [ref=f1e96]:
+            - link "Dashboard" [ref=f1e97] [cursor=pointer]:
+              - /url: /guru/dashboard
+            - generic [ref=f1e100]: Buat Ujian
+          - heading "Buat Ujian Baru" [level=1] [ref=f1e101]
+          - paragraph [ref=f1e102]: Masukkan nama ujian. Soal dapat ditambahkan setelah ujian dibuat.
+        - generic [ref=f1e103]:
+          - generic [ref=f1e104]:
+            - generic [ref=f1e105]: Nama Ujian *
+            - textbox "Nama Ujian *" [ref=f1e106]:
+              - /placeholder: "Contoh: Ujian Tengah Semester Matematika"
+              - text: Ujian Akhir Semester Fisika
+          - generic [ref=f1e110]:
+            - strong [ref=f1e111]: "Konfigurasi otomatis sistem:"
+            - text: Acak urutan soal & jawaban aktif. Semua siswa otomatis terdaftar. Penilaian dihitung otomatis (100 ÷ jumlah soal per soal).
+          - generic [ref=f1e118]: Gagal membuat ujian.
+          - generic [ref=f1e112]:
+            - link "Batal" [ref=f1e113] [cursor=pointer]:
+              - /url: /guru/dashboard
+            - button [ref=f1e114] [cursor=pointer]
