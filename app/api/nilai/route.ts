@@ -154,6 +154,35 @@ export async function hitungDanSimpanNilai(sessionId: string): Promise<Record<st
   return hasilNilai;
 }
 
+// DELETE /api/nilai — reset ujian siswa (hapus nilai + session + jawaban)
+export async function DELETE(req: NextRequest) {
+  const auth = await getAuthUser(req);
+  if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+  if (auth.role !== 'proktor' && auth.role !== 'admin')
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+
+  try {
+    const { siswaId, jadwalId } = await req.json();
+    if (!siswaId || !jadwalId)
+      return NextResponse.json({ error: 'siswaId dan jadwalId wajib diisi.' }, { status: 400 });
+
+    // Hapus nilai dulu (jawabans & session ikut cascade)
+    await execute(
+      `DELETE FROM nilai WHERE id_siswa = $1 AND id_jadwal = $2`,
+      [siswaId, jadwalId]
+    );
+    await execute(
+      `DELETE FROM session_ujians WHERE id_siswa = $1 AND id_jadwal = $2`,
+      [siswaId, jadwalId]
+    );
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: 'Gagal mereset ujian.' }, { status: 500 });
+  }
+}
+
 // POST /api/nilai — hitung dan simpan nilai
 export async function POST(req: NextRequest) {
   const auth = await getAuthUser(req);

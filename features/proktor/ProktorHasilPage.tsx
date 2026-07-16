@@ -30,6 +30,8 @@ export default function ProktorHasilPage() {
   const [filterTingkat, setFilterTingkat] = useState('');
   const [filterKelas, setFilterKelas] = useState('');
   const [showKelasModal, setShowKelasModal] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState<{ siswaId: string; namaSiswa: string } | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -84,6 +86,29 @@ export default function ProktorHasilPage() {
       setToast({ msg: 'Terjadi kesalahan saat memuat nilai.', type: 'error' });
     } finally {
       setLoadingNilai(false);
+    }
+  }
+
+  async function doReset() {
+    if (!resetConfirm || !selectedId) return;
+    setResetLoading(true);
+    try {
+      const res = await fetch('/api/nilai', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siswaId: resetConfirm.siswaId, jadwalId: selectedId }),
+      });
+      if (!res.ok) {
+        setToast({ msg: 'Gagal mereset ujian. Coba lagi.', type: 'error' });
+        return;
+      }
+      setToast({ msg: `Ujian ${resetConfirm.namaSiswa} berhasil direset.`, type: 'success' });
+      handleSelect(selectedId); // reload data
+    } catch {
+      setToast({ msg: 'Terjadi kesalahan. Coba lagi.', type: 'error' });
+    } finally {
+      setResetLoading(false);
+      setResetConfirm(null);
     }
   }
 
@@ -295,13 +320,14 @@ export default function ProktorHasilPage() {
                         {['Benar', 'Salah'].map(h => (
                           <th key={h} style={{ padding: '0.625rem 0.875rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)' }}>{h}</th>
                         ))}
+                        <th style={{ padding: '0.625rem 0.875rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--color-border)' }}>Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(() => {
                         const rows = displayedNilai();
                         if (rows.length === 0) return (
-                          <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Tidak ada data yang cocok.</td></tr>
+                          <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Tidak ada data yang cocok.</td></tr>
                         );
                         return rows.map((n, idx) => {
                           const siswa = siswaMap[n.id_siswa];
@@ -313,6 +339,16 @@ export default function ProktorHasilPage() {
                               <td style={{ padding: '0.75rem 0.875rem', fontSize: '1rem', fontWeight: 800, color: n.lulus ? 'var(--color-success)' : 'var(--color-danger)' }}>{parseFloat(String(n.nilai)).toFixed(0)}</td>
                               <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-success)' }}>{n.jumlah_benar}</td>
                               <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-danger)' }}>{n.jumlah_salah}</td>
+                              <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center' }}>
+                                <button
+                                  onClick={() => setResetConfirm({ siswaId: n.id_siswa, namaSiswa: siswa?.nama ?? '—' })}
+                                  style={{
+                                    padding: '0.25rem 0.625rem', borderRadius: '0.375rem', cursor: 'pointer',
+                                    border: '1.5px solid var(--color-danger)', background: 'transparent',
+                                    color: 'var(--color-danger)', fontSize: '0.75rem', fontWeight: 700,
+                                  }}
+                                >↺ Reset</button>
+                              </td>
                             </tr>
                           );
                         });
@@ -327,6 +363,46 @@ export default function ProktorHasilPage() {
       </main>
       </div>
       <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {/* Modal Konfirmasi Reset Ujian */}
+      {resetConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400 }}>
+          <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 380, boxShadow: 'var(--shadow-xl)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '0.75rem' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text)' }}>Konfirmasi Reset Ujian</span>
+            </div>
+            <p style={{ margin: '0 0 1.25rem', fontSize: '0.9rem', color: 'var(--color-text)', lineHeight: 1.6 }}>
+              Kamu akan mereset ujian <strong>{resetConfirm.namaSiswa}</strong>.<br />
+              Nilai, jawaban, dan sesi ujian akan dihapus. Siswa dapat mengulang ujian dari awal. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setResetConfirm(null)} disabled={resetLoading}>Batal</button>
+              <button
+                onClick={doReset}
+                disabled={resetLoading}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'var(--color-danger)', color: '#fff',
+                  border: 'none', padding: '0.5rem 1rem', borderRadius: '0.5rem',
+                  fontWeight: 600, cursor: resetLoading ? 'not-allowed' : 'pointer',
+                  opacity: resetLoading ? 0.7 : 1,
+                }}
+              >
+                {resetLoading && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                )}
+                {resetLoading ? 'Memproses...' : 'Ya, Reset Ujian'}
+              </button>
+            </div>
+          </div>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
 
       {/* Modal Pilih Kelas */}
       {showKelasModal && (
