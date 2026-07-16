@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, queryOne, execute } from '@/lib/db';
 import { getAuthUser } from '@/lib/apiAuth';
 
 // GET /api/ujian/[id]
@@ -9,21 +9,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const { id } = await params;
-    const supabase = createSupabaseServerClient();
 
-    const { data, error } = await supabase
-      .from('ujians')
-      .select(`*, ujian_kelas ( kelas_id )`)
-      .eq('id', id)
-      .single();
+    const ujian = await queryOne(
+      `SELECT
+         u.*,
+         COALESCE(
+           json_agg(DISTINCT uk.kelas_id) FILTER (WHERE uk.kelas_id IS NOT NULL),
+           '[]'
+         ) AS kelas_ids
+       FROM ujians u
+       LEFT JOIN ujian_kelas uk ON uk.ujian_id = u.id
+       WHERE u.id = $1
+       GROUP BY u.id`,
+      [id]
+    );
 
-    if (error || !data) return NextResponse.json({ error: 'Ujian tidak ditemukan.' }, { status: 404 });
-
-    return NextResponse.json({
-      ...data,
-      kelas_ids: data.ujian_kelas.map((k: { kelas_id: string }) => k.kelas_id),
-      ujian_kelas: undefined,
-    });
+    if (!ujian) return NextResponse.json({ error: 'Ujian tidak ditemukan.' }, { status: 404 });
+    return NextResponse.json(ujian);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Gagal mengambil ujian.' }, { status: 500 });
@@ -39,23 +41,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const { id } = await params;
-    const supabase = createSupabaseServerClient();
     const body = await req.json();
     const { kelas_ids, ...ujianData } = body;
 
-    const { error } = await supabase.from('ujians').update(ujianData).eq('id', id);
-    if (error) throw error;
+    // Whitelist kolom yang boleh diupdate — cegah SQL injection & privilege escalation
+    const ALLOWED_KEYS = ['nama_ujian', 'jenis_ujian', 'durasi', 'nilai_kkm', 'acak_soal', 'acak_opsi', 'tampil_hasil'];
+    const keys = Object.keys(ujianData).filter(k => ALLOWED_KEYS.includes(k));
+    if (keys.length > 0) {
+      const setClauses = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+      const vals = keys.map(k => ujianData[k]);
+      vals.push(id);
+      await execute(`UPDATE ujians SET ${setClauses} WHERE id = $${keys.length + 1}`, vals);
+    }
 
-    // Update relasi kelas jika dikirim
     if (kelas_ids !== undefined) {
-      // A-07: delete semua lama dulu, lalu insert baru
-      // Insert dilakukan setelah delete agar tidak terjadi duplicate key error
-      const { error: delErr } = await supabase.from('ujian_kelas').delete().eq('ujian_id', id);
-      if (delErr) throw delErr;
-      if (kelas_ids.length) {
-        const newRows = kelas_ids.map((kelas_id: string) => ({ ujian_id: id, kelas_id }));
-        const { error: insertErr } = await supabase.from('ujian_kelas').insert(newRows);
-        if (insertErr) throw insertErr;
+      await execute('DELETE FROM ujian_kelas WHERE ujian_id = $1', [id]);
+      for (const kelas_id of kelas_ids) {
+        await execute(
+          'INSERT INTO ujian_kelas (ujian_id, kelas_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [id, kelas_id]
+        );
       }
     }
 
@@ -75,27 +80,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const { id } = await params;
-    const supabase = createSupabaseServerClient();
 
-    // Cek apakah ada jadwal aktif
-    const { data: jadwal } = await supabase
-      .from('jadwal_ujians')
-      .select('id')
-      .eq('id_ujian', id)
-      .eq('status_publikasi', 'Published')
-      .limit(1);
+    // Cek jadwal aktif
+    const jadwal = await query(
+      `SELECT id FROM jadwal_ujians WHERE id_ujian = $1 AND status_publikasi = 'Published' LIMIT 1`,
+      [id]
+    );
 
-    if (jadwal && jadwal.length > 0) {
+    if (jadwal.length > 0) {
       return NextResponse.json(
         { error: 'Tidak bisa hapus ujian yang masih memiliki jadwal aktif.' },
         { status: 409 }
       );
     }
 
-    // Cascade delete: soal dan ujian_kelas otomatis terhapus via FK
-    const { error } = await supabase.from('ujians').delete().eq('id', id);
-    if (error) throw error;
-
+    await execute('DELETE FROM ujians WHERE id = $1', [id]);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

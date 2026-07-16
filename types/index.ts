@@ -13,7 +13,7 @@ export type StatusSoal = 'belum' | 'sudah' | 'ragu';
 export interface User {
   id: string;
   username: string;
-  password?: string; // plaintext — kolom opsional di profiles, perlu ditambah di DB
+  password_plain?: string; // plain-text password — hanya dikembalikan ke proktor/admin
   role: Role;
   status: StatusAkun;
   nama: string;
@@ -32,6 +32,7 @@ export interface Siswa {
   nama: string;
   id_kelas: string;
   id_user: string;
+  nama_kelas?: string;
 }
 
 export interface Guru {

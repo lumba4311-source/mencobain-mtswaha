@@ -1,19 +1,21 @@
 /**
- * Unit tests untuk lib/apiAuth.ts
- * Test: getAuthUser() — return {id, role} atau null
+ * Unit tests untuk lib/apiAuth.ts (JWT mandiri via jose)
+ * Test: getAuthUser() — return {id, role, username} atau null
  */
 
 import { NextRequest } from 'next/server';
+import { SignJWT } from 'jose';
 
-// Mock @supabase/supabase-js sebelum import modul
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(),
+// Mock jose jwtVerify
+jest.mock('jose', () => ({
+  jwtVerify: jest.fn(),
+  SignJWT:    jest.requireActual('jose').SignJWT,
 }));
 
-import { createClient } from '@supabase/supabase-js';
+import { jwtVerify } from 'jose';
 import { getAuthUser } from '@/lib/apiAuth';
 
-const mockCreateClient = createClient as jest.Mock;
+const mockJwtVerify = jwtVerify as jest.Mock;
 
 function makeRequest(opts: { authHeader?: string; cookie?: string } = {}) {
   const headers = new Headers();
@@ -22,84 +24,52 @@ function makeRequest(opts: { authHeader?: string; cookie?: string } = {}) {
   return new NextRequest('http://localhost/api/test', { headers });
 }
 
-function mockSupabase(getUserResult: object, profileResult: object) {
-  mockCreateClient.mockReturnValue({
-    auth: { getUser: jest.fn().mockResolvedValue(getUserResult) },
-    from: jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq:     jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue(profileResult),
-    }),
-  });
-}
-
 describe('getAuthUser()', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL    = 'http://localhost:8000';
-    process.env.SUPABASE_SERVICE_ROLE_KEY   = 'test-service-key';
+    process.env.JWT_SECRET = 'test-secret-min-32-chars-long-enough';
+    jest.clearAllMocks();
   });
 
-  test('returns null jika tidak ada token sama sekali', async () => {
-    const req = makeRequest();
-    const result = await getAuthUser(req);
+  test('returns null jika tidak ada token', async () => {
+    const result = await getAuthUser(makeRequest());
     expect(result).toBeNull();
   });
 
-  test('returns null jika token tidak valid (supabase error)', async () => {
-    mockSupabase(
-      { data: { user: null }, error: new Error('invalid token') },
-      { data: null, error: null }
-    );
-    const req = makeRequest({ authHeader: 'Bearer invalid-token' });
-    const result = await getAuthUser(req);
+  test('returns null jika JWT tidak valid', async () => {
+    mockJwtVerify.mockRejectedValue(new Error('invalid token'));
+    const result = await getAuthUser(makeRequest({ authHeader: 'Bearer bad-token' }));
     expect(result).toBeNull();
   });
 
-  test('returns null jika user valid tapi profile tidak ditemukan', async () => {
-    mockSupabase(
-      { data: { user: { id: 'user-123' } }, error: null },
-      { data: null, error: null }
-    );
-    const req = makeRequest({ authHeader: 'Bearer valid-token' });
-    const result = await getAuthUser(req);
+  test('returns null jika payload tidak punya sub/role/username', async () => {
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u1' } }); // role missing
+    const result = await getAuthUser(makeRequest({ authHeader: 'Bearer token' }));
     expect(result).toBeNull();
   });
 
-  test('returns {id, role} jika token valid via Authorization header', async () => {
-    mockSupabase(
-      { data: { user: { id: 'user-123' } }, error: null },
-      { data: { role: 'siswa' }, error: null }
-    );
-    const req = makeRequest({ authHeader: 'Bearer valid-token' });
-    const result = await getAuthUser(req);
-    expect(result).toEqual({ id: 'user-123', role: 'siswa' });
+  test('returns {id, role, username} jika token valid via Authorization header', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: { sub: 'user-123', role: 'siswa', username: 'siswa01' },
+    });
+    const result = await getAuthUser(makeRequest({ authHeader: 'Bearer valid-token' }));
+    expect(result).toEqual({ id: 'user-123', role: 'siswa', username: 'siswa01' });
   });
 
-  test('returns {id, role} jika token valid via cookie', async () => {
-    mockSupabase(
-      { data: { user: { id: 'user-456' } }, error: null },
-      { data: { role: 'proktor' }, error: null }
-    );
-    const req = makeRequest({ cookie: 'valid-cookie-token' });
-    const result = await getAuthUser(req);
-    expect(result).toEqual({ id: 'user-456', role: 'proktor' });
+  test('returns {id, role, username} jika token valid via cookie', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: { sub: 'user-456', role: 'proktor', username: 'proktor1' },
+    });
+    const result = await getAuthUser(makeRequest({ cookie: 'valid-cookie-token' }));
+    expect(result).toEqual({ id: 'user-456', role: 'proktor', username: 'proktor1' });
   });
 
   test('Authorization header diutamakan di atas cookie', async () => {
-    const mockGetUser = jest.fn().mockResolvedValue({
-      data: { user: { id: 'user-header' } }, error: null,
+    mockJwtVerify.mockResolvedValue({
+      payload: { sub: 'user-header', role: 'guru', username: 'guru01' },
     });
-    mockCreateClient.mockReturnValue({
-      auth: { getUser: mockGetUser },
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: { role: 'guru' }, error: null }),
-      }),
-    });
-    const req = makeRequest({ authHeader: 'Bearer header-token', cookie: 'cookie-token' });
-    await getAuthUser(req);
-    // Pastikan token yang dipakai adalah dari header
-    expect(mockGetUser).toHaveBeenCalledWith('header-token');
+    const result = await getAuthUser(makeRequest({ authHeader: 'Bearer header-token', cookie: 'cookie-token' }));
+    expect(result).toEqual({ id: 'user-header', role: 'guru', username: 'guru01' });
+    // jwtVerify dipanggil dengan header-token (bukan cookie-token)
+    expect(mockJwtVerify).toHaveBeenCalledWith('header-token', expect.any(Uint8Array));
   });
 });

@@ -17,6 +17,7 @@ export default function ProktorAkunPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tab, setTab]   = useState<Tab>('siswa');
   const [mode, setMode] = useState<Mode>('list');
   const [editId, setEditId] = useState('');
@@ -51,6 +52,16 @@ export default function ProktorAkunPage() {
   const [deletingId, setDeletingId]       = useState('');
   const [savingRp,   setSavingRp]         = useState(false);
   const [importing,  setImporting]        = useState(false);
+
+  // Show/hide password per baris — Set berisi id user yang sedang ditampilkan
+  const [showPassIds, setShowPassIds] = useState<Set<string>>(new Set());
+  function togglePass(id: string) {
+    setShowPassIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   // Confirm modal
   const [confirmMsg,    setConfirmMsg]    = useState('');
@@ -122,7 +133,7 @@ export default function ProktorAkunPage() {
         const data = await res.json();
         if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
       } else {
-        const patchBody: Record<string, string> = { userId: editId, nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas };
+        const patchBody: Record<string, string> = { userId: editId, nama: siswForm.nama.trim(), id_kelas: siswForm.id_kelas, username: siswForm.username.trim() };
         // Hanya kirim password jika diisi — kosong = tidak diubah
         if (siswForm.password.trim()) patchBody.password = siswForm.password.trim();
         const res = await fetch('/api/akun', {
@@ -195,7 +206,7 @@ export default function ProktorAkunPage() {
         const data = await res.json();
         if (!res.ok) { setError(data.error ?? 'Gagal menyimpan.'); return; }
       } else {
-        const patchBody: Record<string, string> = { userId: editId, nama: guruForm.nama.trim() };
+        const patchBody: Record<string, string> = { userId: editId, nama: guruForm.nama.trim(), username: guruForm.username.trim() };
         // Hanya kirim password jika diisi — kosong = tidak diubah
         if (guruForm.password.trim()) patchBody.password = guruForm.password.trim();
         const res = await fetch('/api/akun', {
@@ -391,9 +402,9 @@ export default function ProktorAkunPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <AppTopbar pageLabel="Kelola Akun" />
+      <AppTopbar pageLabel="Kelola Akun" onMenuClick={() => setSidebarOpen(true)} />
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
         <div style={{
@@ -531,7 +542,27 @@ export default function ProktorAkunPage() {
                             <td style={{ padding: '0.75rem 1rem' }}><span className="badge badge-neutral">{kelasMap[siswa.id_kelas] ?? '—'}</span></td>
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>{siswa.nama}</td>
                             <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{u?.username ?? '—'}</td>
-                            <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{u?.password ?? '—'}</td>
+                            <td style={{ padding: '0.75rem 1rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)', letterSpacing: showPassIds.has(siswa.id_user) ? 'normal' : '0.1em' }}>
+                                  {u?.password_plain
+                                    ? (showPassIds.has(siswa.id_user) ? u.password_plain : '••••••••')
+                                    : '—'}
+                                </span>
+                                {u?.password_plain && (
+                                  <button
+                                    onClick={() => togglePass(siswa.id_user)}
+                                    style={{ background: 'none', border: 'none', padding: '0.125rem', cursor: 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, flexShrink: 0 }}
+                                    title={showPassIds.has(siswa.id_user) ? 'Sembunyikan password' : 'Tampilkan password'}
+                                  >
+                                    {showPassIds.has(siswa.id_user)
+                                      ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                      : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    }
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                             <td style={{ padding: '0.75rem 1rem' }}>
                               <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                                 <button className="btn btn-outline btn-sm" onClick={() => handleEditSiswa(siswa)}>Edit</button>
@@ -588,7 +619,27 @@ export default function ProktorAkunPage() {
                           <tr key={guru.id} style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>{guru.nama}</td>
                             <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{u?.username ?? '—'}</td>
-                            <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{u?.password ?? '—'}</td>
+                            <td style={{ padding: '0.75rem 1rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: 'var(--color-text-muted)', letterSpacing: showPassIds.has(guru.id_user) ? 'normal' : '0.1em' }}>
+                                  {u?.password_plain
+                                    ? (showPassIds.has(guru.id_user) ? u.password_plain : '••••••••')
+                                    : '—'}
+                                </span>
+                                {u?.password_plain && (
+                                  <button
+                                    onClick={() => togglePass(guru.id_user)}
+                                    style={{ background: 'none', border: 'none', padding: '0.125rem', cursor: 'pointer', color: 'var(--color-text-muted)', lineHeight: 1, flexShrink: 0 }}
+                                    title={showPassIds.has(guru.id_user) ? 'Sembunyikan password' : 'Tampilkan password'}
+                                  >
+                                    {showPassIds.has(guru.id_user)
+                                      ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                      : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    }
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                             <td style={{ padding: '0.75rem 1rem' }}>
                               <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                                 <button className="btn btn-outline btn-sm" onClick={() => handleEditGuru(guru)}>Edit</button>
@@ -699,7 +750,7 @@ export default function ProktorAkunPage() {
         {/* ── MODAL: RESET PASSWORD ─────────────────────────── */}
         {rpTarget && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-            <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 360 }}>
+            <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 'min(360px, calc(100vw - 2rem))' }}>
               <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)' }}>Reset Password</h2>
               <input className="form-input" type="password" placeholder="Password baru" value={rpVal}
                 onChange={e => setRpVal(e.target.value)}
@@ -717,7 +768,7 @@ export default function ProktorAkunPage() {
         {/* ── CONFIRM MODAL ────────────────────────────────────── */}
         {confirmMsg && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-            <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 360 }}>
+            <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 'min(360px, calc(100vw - 2rem))' }}>
               <p style={{ margin: '0 0 1.25rem', fontSize: '0.9375rem', color: 'var(--color-text)', lineHeight: 1.5 }}>{confirmMsg}</p>
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
                 <button className="btn btn-ghost" onClick={() => { setConfirmMsg(''); setConfirmAction(null); }} disabled={!!deletingId}>Batal</button>

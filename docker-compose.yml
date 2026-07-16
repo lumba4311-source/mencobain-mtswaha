@@ -1,131 +1,46 @@
 services:
-  # ── Next.js App ─────────────────────────────────────────────
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        NEXT_PUBLIC_AUTH_DEBUG: ${NEXT_PUBLIC_AUTH_DEBUG:-false}
-    container_name: ecbt_app
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - NEXT_PUBLIC_AUTH_DEBUG=${NEXT_PUBLIC_AUTH_DEBUG:-false}
-      - IS_DOCKER=true
-    volumes:
-      - ecbt_uploads:/app/uploads
-    depends_on:
-      supabase-db:
-        condition: service_healthy
-      supabase-auth:
-        condition: service_started
-    networks:
-      - ecbt_network
-
-  # ── Supabase: PostgreSQL ─────────────────────────────────────
-  supabase-db:
+  # ── PostgreSQL ───────────────────────────────────────────────
+  db:
     image: postgres:15-alpine
     container_name: ecbt_db
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: postgres
+      POSTGRES_DB: ecbt
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecbtpassword}
     volumes:
       - ecbt_db_data:/var/lib/postgresql/data
-      - ./supabase/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql
-      - ./supabase:/tmp/supabase:ro
+      - ./supabase/schema-pg.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./supabase/seed-pg.sql:/docker-entrypoint-initdb.d/02-seed.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ecbt"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - ecbt_network
 
-  # ── Supabase: Auth (GoTrue) ──────────────────────────────────
-  supabase-auth:
-    image: supabase/gotrue:v2.151.0
-    container_name: ecbt_auth
+  # ── Next.js App ─────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecbt_app
     restart: unless-stopped
     ports:
-      - "9999:9999"
+      - "3000:3000"
     environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-your-super-secret-password}@supabase-db:5432/postgres
-      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
-      GOTRUE_URI_ALLOW_LIST: ""
-      GOTRUE_DISABLE_SIGNUP: "false"
-      GOTRUE_JWT_ADMIN_ROLES: service_role
-      GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_DEFAULT_EXP: 3600
-      GOTRUE_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-      GOTRUE_MAILER_AUTOCONFIRM: "true"
-      GOTRUE_SMTP_ADMIN_EMAIL: admin@umbk.local
-      GOTRUE_SMTP_HOST: ""
-      GOTRUE_SMTP_PORT: "587"
-      GOTRUE_SMTP_USER: ""
-      GOTRUE_SMTP_PASS: ""
-      GOTRUE_SMTP_SENDER_NAME: UMBK MTS WAHA
-    depends_on:
-      supabase-db:
-        condition: service_healthy
-    networks:
-      - ecbt_network
-
-  # ── Supabase: REST API (PostgREST) ───────────────────────────
-  supabase-rest:
-    image: postgrest/postgrest:v12.2.8
-    container_name: ecbt_rest
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-your-super-secret-password}@supabase-db:5432/postgres
-      PGRST_DB_SCHEMAS: public,storage,graphql_public
-      PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
-      PGRST_DB_USE_LEGACY_GUCS: "false"
-      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
-      PGRST_APP_SETTINGS_JWT_EXP: 3600
-    depends_on:
-      supabase-db:
-        condition: service_healthy
-    networks:
-      - ecbt_network
-
-  # ── Supabase: Kong (API Gateway) ─────────────────────────────
-  supabase-kong:
-    image: kong:2.8.1
-    container_name: ecbt_kong
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-      - "8443:8443"
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
-      KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
-      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
-      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-ecbtpassword}@db:5432/ecbt
+      JWT_SECRET: ${JWT_SECRET:-changeme-jwt-secret-min-32-chars!!}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      NODE_ENV: ${NODE_ENV:-production}
     volumes:
-      - ./docker/kong.yml:/var/lib/kong/kong.yml:ro
+      - ecbt_uploads:/app/uploads
     depends_on:
-      - supabase-auth
-      - supabase-rest
+      db:
+        condition: service_healthy
     networks:
       - ecbt_network
 

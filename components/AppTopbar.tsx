@@ -7,9 +7,11 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 interface AppTopbarProps {
   /** Page label shown after the divider, e.g. "Dashboard", "Kelola Jadwal" */
   pageLabel?: string;
+  /** Callback untuk toggle mobile sidebar drawer */
+  onMenuClick?: () => void;
 }
 
-export default function AppTopbar({ pageLabel }: AppTopbarProps) {
+export default function AppTopbar({ pageLabel, onMenuClick }: AppTopbarProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
@@ -22,8 +24,21 @@ export default function AppTopbar({ pageLabel }: AppTopbarProps) {
 
   return (
     <header className="topbar">
-      {/* ── LEFT: Logo + App name + page label ── */}
+      {/* ── LEFT: Hamburger (mobile) + Logo + App name + page label ── */}
       <div className="topbar-left">
+        {onMenuClick && (
+          <button
+            className="topbar-hamburger"
+            onClick={onMenuClick}
+            aria-label="Buka menu navigasi"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6"  x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+        )}
         <img src="/favicon.ico" alt="Logo MTS WAHA" width={28} height={28} style={{ objectFit: 'contain', flexShrink: 0 }} />
         <span className="topbar-appname">E-CBT MTS WAHA</span>
         {pageLabel && (
@@ -81,7 +96,7 @@ export default function AppTopbar({ pageLabel }: AppTopbarProps) {
             <polyline points="16,17 21,12 16,7"/>
             <line x1="21" y1="12" x2="9" y2="12"/>
           </svg>
-          Keluar
+          <span className="topbar-logout-text">Keluar</span>
         </button>
       </div>
     </header>

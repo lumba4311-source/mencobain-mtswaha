@@ -1,20 +1,34 @@
 /**
  * Unit tests untuk app/api/monitoring/route.ts
  * Test: GET (A-06), POST (force-submit)
- * Catatan: route punya GET dan POST — tidak ada PATCH
  */
 
 import { NextRequest } from 'next/server';
 
 jest.mock('@/lib/apiAuth', () => ({ getAuthUser: jest.fn() }));
-jest.mock('@/lib/supabase', () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock('@/lib/db', () => ({
+  query:    jest.fn(),
+  queryOne: jest.fn(),
+  execute:  jest.fn(),
+}));
+// monitoring/route.ts memanggil hitungDanSimpanNilai dari nilai/route.ts secara langsung
+// mock seluruh nilai/route agar force-submit test tidak bergantung pada logika nilai
+jest.mock('@/app/api/nilai/route', () => ({
+  hitungDanSimpanNilai: jest.fn(),
+  POST: jest.fn(),
+  GET:  jest.fn(),
+}));
 
 import { getAuthUser } from '@/lib/apiAuth';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, queryOne, execute } from '@/lib/db';
+import { hitungDanSimpanNilai as mockHitungDanSimpanNilai } from '@/app/api/nilai/route';
 import { GET, POST } from '@/app/api/monitoring/route';
 
-const mockGetAuthUser = getAuthUser as jest.Mock;
-const mockCreateSupabase = createSupabaseServerClient as jest.Mock;
+const mockGetAuthUser         = getAuthUser as jest.Mock;
+const mockQuery               = query as jest.Mock;
+const mockQueryOne            = queryOne as jest.Mock;
+const mockExecute             = execute as jest.Mock;
+const mockHitung              = mockHitungDanSimpanNilai as jest.Mock;
 
 function makeReq(method: string, body?: object, search?: string) {
   const url = `http://localhost/api/monitoring${search ? '?' + search : ''}`;
@@ -25,6 +39,9 @@ function makeReq(method: string, body?: object, search?: string) {
   });
 }
 
+beforeEach(() => jest.clearAllMocks());
+
+// ── GET ──────────────────────────────────────────────────────────────────────
 describe('GET /api/monitoring', () => {
   test('returns 401 jika tidak login', async () => {
     mockGetAuthUser.mockResolvedValue(null);
@@ -32,8 +49,7 @@ describe('GET /api/monitoring', () => {
     expect(res.status).toBe(401);
   });
 
-  // monitoring hanya untuk proktor dan admin (bukan guru)
-  test('returns 403 jika role bukan proktor/admin', async () => {
+  test('returns 403 jika role guru', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'guru' });
     const res = await GET(makeReq('GET', undefined, 'jadwalId=j1'));
     expect(res.status).toBe(403);
@@ -49,96 +65,74 @@ describe('GET /api/monitoring', () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
     const res = await GET(makeReq('GET'));
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('jadwalId');
+    expect((await res.json()).error).toContain('jadwalId');
   });
 
   test('returns 404 jika jadwal tidak ditemukan', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      }),
-    });
+    mockQueryOne.mockResolvedValue(null);
     const res = await GET(makeReq('GET', undefined, 'jadwalId=j1'));
     expect(res.status).toBe(404);
   });
 
   test('returns 200 array kosong jika tidak ada siswa di jadwal', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({
-          data: {
-            id: 'j1', id_ujian: 'u1',
-            ujians: { durasi: 60 },
-            jadwal_siswa: [], // tidak ada siswa
-          },
-          error: null,
-        }),
-      }),
-    });
+    mockQueryOne.mockResolvedValue({ id: 'j1', id_ujian: 'u1', ujians: { durasi: 90 } });
+    mockQuery.mockResolvedValue([]); // jadwal_siswa kosong
     const res = await GET(makeReq('GET', undefined, 'jadwalId=j1'));
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual([]);
+    expect(await res.json()).toEqual([]);
   });
 
-  test('returns 200 dengan data monitoring lengkap (A-06)', async () => {
+  test('returns 200 dengan data monitoring siswa', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-
-    const jadwalData = {
-      id: 'j1', id_ujian: 'u1',
-      ujians: { durasi: 90 },
-      jadwal_siswa: [{ siswa_id: 's1' }],
-    };
-
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockImplementation((table: string) => {
-        if (table === 'jadwal_ujians') return {
-          select: jest.fn().mockReturnThis(),
-          eq:     jest.fn().mockReturnThis(),
-          single: jest.fn().mockResolvedValue({ data: jadwalData, error: null }),
-        };
-        if (table === 'siswas') return {
-          select: jest.fn().mockReturnThis(),
-          in:     jest.fn().mockResolvedValue({ data: [{ id: 's1', nama: 'Siswa 1' }], error: null }),
-        };
-        if (table === 'session_ujians') return {
-          select: jest.fn().mockReturnThis(),
-          eq:     jest.fn().mockResolvedValue({ data: [{ id: 'ses1', id_siswa: 's1', id_jadwal: 'j1' }], error: null }),
-        };
-        if (table === 'jawabans') return {
-          select: jest.fn().mockReturnThis(),
-          in:     jest.fn().mockReturnThis(),
-          not:    jest.fn().mockResolvedValue({ data: [{ id_session: 'ses1', jawaban_siswa: 'A' }], error: null }),
-        };
-        if (table === 'soals') return {
-          select: jest.fn().mockReturnThis(),
-          eq:     jest.fn().mockResolvedValue({ data: null, error: null, count: 5 }),
-        };
-        return {
-          select: jest.fn().mockReturnThis(),
-          eq:     jest.fn().mockResolvedValue({ data: [], error: null }),
-        };
-      }),
-    });
+    // queryOne: (1) jadwal lookup saja — tidak ada totalSoal queryOne di route
+    mockQueryOne
+      .mockResolvedValueOnce({ id: 'j1', id_ujian: 'u1', ujians: { durasi: 90 } });
+    mockQuery
+      // jadwal_siswa
+      .mockResolvedValueOnce([{ siswa_id: 's1' }, { siswa_id: 's2' }])
+      // siswas
+      .mockResolvedValueOnce([
+        { id: 's1', nama: 'Siswa Satu', nis: '001', id_kelas: 'k1' },
+        { id: 's2', nama: 'Siswa Dua', nis: '002', id_kelas: 'k1' },
+      ])
+      // sessions
+      .mockResolvedValueOnce([
+        { id: 'ses1', id_siswa: 's1', id_jadwal: 'j1', status: 'berlangsung', sisa_waktu: 3600, deadline: null, started_at: null },
+      ])
+      // jawabans
+      .mockResolvedValueOnce([
+        { id_session: 'ses1' },
+        { id_session: 'ses1' },
+        { id_session: 'ses1' },
+      ]);
 
     const res = await GET(makeReq('GET', undefined, 'jadwalId=j1'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body)).toBe(true);
-    expect(body[0]).toHaveProperty('siswa');
-    expect(body[0]).toHaveProperty('jumlah_dijawab');
-    expect(body[0]).toHaveProperty('durasiBatas');
-    expect(body[0].durasiBatas).toBe(90);
+    expect(body).toHaveLength(2);
+    // response shape: { siswa, session, jumlah_dijawab, progress_persen, status }
+    const s1 = body.find((x: { siswa: { id: string } }) => x.siswa.id === 's1');
+    expect(s1).toBeDefined();
+    expect(s1.jumlahDijawab).toBe(3);
+    expect(s1.status).toBe('berlangsung');
+    // siswa tanpa session harus status belum_masuk
+    const s2 = body.find((x: { siswa: { id: string } }) => x.siswa.id === 's2');
+    expect(s2.status).toBe('Belum Ujian');
+    expect(s2.sessionId).toBeNull();
+  });
+
+  test('returns 500 jika DB error', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'admin' });
+    mockQueryOne.mockRejectedValue(new Error('DB error'));
+    const res = await GET(makeReq('GET', undefined, 'jadwalId=j1'));
+    expect(res.status).toBe(500);
   });
 });
 
+// ── POST (force-submit, A-06) ─────────────────────────────────────────────────
 describe('POST /api/monitoring (force-submit, A-06)', () => {
   test('returns 401 jika tidak login', async () => {
     mockGetAuthUser.mockResolvedValue(null);
@@ -156,7 +150,26 @@ describe('POST /api/monitoring (force-submit, A-06)', () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
     const res = await POST(makeReq('POST', {}));
     expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('sessionId');
+  });
+
+  test('force-submit berhasil — execute UPDATE + panggil hitungDanSimpanNilai', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
+    // queryOne: session lookup untuk cek status sebelum force submit
+    mockQueryOne.mockResolvedValueOnce({ id: 'ses1', id_jadwal: 'j1', status: 'berlangsung' });
+    mockExecute.mockResolvedValue(1);
+    // mock hitungDanSimpanNilai langsung — bukan POST
+    mockHitung.mockResolvedValue({ id: 'n1', nilai: 80 });
+
+    const res = await POST(makeReq('POST', { sessionId: 'ses1' }));
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toContain('sessionId');
+    expect(body.ok).toBe(true);
+    expect(body.nilai).toBeDefined();
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.stringContaining('force_submit'),
+      ['ses1']
+    );
+    expect(mockHitung).toHaveBeenCalledWith('ses1');
   });
 });

@@ -1,27 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, execute } from '@/lib/db';
 import { getAuthUser } from '@/lib/apiAuth';
 
-// GET /api/jawaban?sessionId=xxx — ambil semua jawaban dalam session
+// GET /api/jawaban?sessionId=xxx
 export async function GET(req: NextRequest) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
   try {
-    const supabase = createSupabaseServerClient();
     const sessionId = new URL(req.url).searchParams.get('sessionId');
 
-    if (!sessionId) {
+    if (!sessionId)
       return NextResponse.json({ error: 'sessionId wajib diisi.' }, { status: 400 });
-    }
 
-    const { data, error } = await supabase
-      .from('jawabans')
-      .select('*')
-      .eq('id_session', sessionId);
+    const jawabans = await query(
+      'SELECT * FROM jawabans WHERE id_session = $1',
+      [sessionId]
+    );
 
-    if (error) throw error;
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(jawabans);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Gagal mengambil jawaban.' }, { status: 500 });
@@ -34,23 +31,20 @@ export async function POST(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
   try {
-    const supabase = createSupabaseServerClient();
     const { sessionId, soalId, jawaban_siswa, status_soal } = await req.json();
 
-    const { error } = await supabase
-      .from('jawabans')
-      .upsert(
-        {
-          id_session:    sessionId,
-          id_soal:       soalId,
-          jawaban_siswa: jawaban_siswa ?? null,
-          status_soal:   status_soal ?? 'belum',
-          waktu_jawab:   new Date().toISOString(),
-        },
-        { onConflict: 'id_session,id_soal' }
-      );
+    // UPSERT: insert jika belum ada, update jika sudah ada
+    await execute(
+      `INSERT INTO jawabans (id_session, id_soal, jawaban_siswa, status_soal, waktu_jawab)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (id_session, id_soal)
+       DO UPDATE SET
+         jawaban_siswa = EXCLUDED.jawaban_siswa,
+         status_soal   = EXCLUDED.status_soal,
+         waktu_jawab   = NOW()`,
+      [sessionId, soalId, jawaban_siswa ?? null, status_soal ?? 'belum']
+    );
 
-    if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);

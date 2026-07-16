@@ -1,158 +1,187 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, queryOne, execute } from '@/lib/db';
 import { getAuthUser } from '@/lib/apiAuth';
 
-// GET /api/nilai?siswaId=xxx         — histori nilai siswa
-// GET /api/nilai?jadwalId=xxx        — nilai semua siswa dalam jadwal (proktor/guru)
-// GET /api/nilai?sessionId=xxx       — nilai untuk satu session
+// GET /api/nilai?siswaId=xxx | jadwalId=xxx | sessionId=xxx
 export async function GET(req: NextRequest) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
   try {
-    const supabase = createSupabaseServerClient();
     const { searchParams } = new URL(req.url);
     const siswaId   = searchParams.get('siswaId');
     const jadwalId  = searchParams.get('jadwalId');
     const sessionId = searchParams.get('sessionId');
 
-    // A-08: Wajib ada minimal satu parameter — cegah return semua data nilai
-    if (!siswaId && !jadwalId && !sessionId) {
-      return NextResponse.json({ error: 'Minimal satu parameter diperlukan: siswaId, jadwalId, atau sessionId.' }, { status: 400 });
+    if (!siswaId && !jadwalId && !sessionId)
+      return NextResponse.json(
+        { error: 'Minimal satu parameter diperlukan: siswaId, jadwalId, atau sessionId.' },
+        { status: 400 }
+      );
+
+    // Siswa hanya boleh melihat nilai miliknya sendiri
+    if (auth.role === 'siswa') {
+      const siswa = await queryOne<{ id: string }>(
+        'SELECT id FROM siswas WHERE id_user = $1 LIMIT 1',
+        [auth.id]
+      );
+      if (!siswa) return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+      // Jika siswaId disuplai, pastikan milik siswa yang login
+      if (siswaId && siswaId !== siswa.id)
+        return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
     }
 
-    let query = supabase.from('nilai').select('*');
+    const conditions: string[] = [];
+    const params: unknown[]    = [];
+    let idx = 1;
 
-    if (siswaId)   query = query.eq('id_siswa',   siswaId);
-    if (jadwalId)  query = query.eq('id_jadwal',  jadwalId);
-    if (sessionId) query = query.eq('id_session', sessionId).limit(1);
+    if (siswaId)   { conditions.push(`id_siswa = $${idx++}`);   params.push(siswaId); }
+    if (jadwalId)  { conditions.push(`id_jadwal = $${idx++}`);  params.push(jadwalId); }
+    if (sessionId) { conditions.push(`id_session = $${idx++}`); params.push(sessionId); }
 
-    const { data, error } = await query.order('submitted_at', { ascending: false });
-    if (error) throw error;
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limitClause = sessionId ? 'LIMIT 1' : '';
 
-    if (sessionId) return NextResponse.json(data?.[0] ?? null);
-    return NextResponse.json(data ?? []);
+    const rows = await query(
+      `SELECT * FROM nilai ${where} ORDER BY submitted_at DESC ${limitClause}`,
+      params
+    );
+
+    if (sessionId) return NextResponse.json(rows[0] ?? null);
+    return NextResponse.json(rows);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Gagal mengambil nilai.' }, { status: 500 });
   }
 }
 
-// POST /api/nilai — submit ujian dan hitung nilai
+/**
+ * Hitung dan simpan nilai untuk sessionId yang diberikan.
+ * Dapat dipanggil langsung dari route lain (monitoring/force submit)
+ * tanpa membuat HTTP request internal.
+ *
+ * Return: row nilai yang baru diinsert, atau existing bila sudah ada.
+ */
+export async function hitungDanSimpanNilai(sessionId: string): Promise<Record<string, unknown>> {
+  // Ambil session + jadwal
+  const session = await queryOne<{
+    id: string; id_jadwal: string; id_siswa: string;
+    jadwal_ujians: { id_ujian: string };
+  }>(
+    `SELECT s.*, row_to_json(j.*) AS jadwal_ujians
+     FROM session_ujians s
+     JOIN jadwal_ujians j ON j.id = s.id_jadwal
+     WHERE s.id = $1`,
+    [sessionId]
+  );
+
+  if (!session) throw new Error('Session tidak ditemukan.');
+
+  const jadwalId = session.id_jadwal;
+  const siswaId  = session.id_siswa;
+  const idUjian  = session.jadwal_ujians.id_ujian;
+
+  // Ambil semua soal
+  const soals = await query<{ id: string; jawaban_benar: string; bobot: number }>(
+    'SELECT id, jawaban_benar, bobot FROM soals WHERE id_ujian = $1',
+    [idUjian]
+  );
+
+  // Ambil jawaban siswa
+  const jawabans = await query<{ id_soal: string; jawaban_siswa: string | null }>(
+    'SELECT id_soal, jawaban_siswa FROM jawabans WHERE id_session = $1',
+    [sessionId]
+  );
+
+  const jawabanMap = new Map(jawabans.map(j => [j.id_soal, j.jawaban_siswa]));
+
+  let jumlah_benar  = 0;
+  let jumlah_salah  = 0;
+  let jumlah_kosong = 0;
+
+  // Update benar_salah per jawaban secara paralel
+  const updates: Promise<number>[] = [];
+
+  for (const soal of soals) {
+    const jawaban = jawabanMap.get(soal.id);
+    if (!jawaban) {
+      jumlah_kosong++;
+    } else if (jawaban === soal.jawaban_benar) {
+      jumlah_benar++;
+    } else {
+      jumlah_salah++;
+    }
+
+    updates.push(
+      execute(
+        `UPDATE jawabans SET benar_salah = $1 WHERE id_session = $2 AND id_soal = $3`,
+        [jawaban ? jawaban === soal.jawaban_benar : null, sessionId, soal.id]
+      )
+    );
+  }
+
+  await Promise.all(updates);
+
+  const totalSoal = soals.length;
+  const nilai = totalSoal > 0 ? Math.round((jumlah_benar / totalSoal) * 100) : 0;
+
+  // INSERT atomik — ON CONFLICT DO NOTHING mencegah duplikat race condition
+  // antara auto-submit dan force-submit yang bisa terjadi bersamaan
+  const hasilNilai = await queryOne<Record<string, unknown>>(
+    `INSERT INTO nilai
+       (id_session, id_siswa, id_jadwal, jumlah_benar, jumlah_salah, jumlah_kosong, nilai, lulus, submitted_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW())
+     ON CONFLICT (id_session) DO NOTHING
+     RETURNING *`,
+    [sessionId, siswaId, jadwalId, jumlah_benar, jumlah_salah, jumlah_kosong, nilai]
+  );
+
+  // Jika DO NOTHING terpicu (duplikat), ambil existing row
+  if (!hasilNilai) {
+    const existing = await queryOne<Record<string, unknown>>(
+      'SELECT * FROM nilai WHERE id_session = $1',
+      [sessionId]
+    );
+    return existing ?? {};
+  }
+
+  // Update status session ke selesai
+  await execute(
+    `UPDATE session_ujians SET status = 'selesai' WHERE id = $1`,
+    [sessionId]
+  );
+
+  return hasilNilai;
+}
+
+// POST /api/nilai — hitung dan simpan nilai
 export async function POST(req: NextRequest) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
   try {
-    const supabase = createSupabaseServerClient();
     const { sessionId } = await req.json();
+    if (!sessionId)
+      return NextResponse.json({ error: 'sessionId wajib diisi.' }, { status: 400 });
 
-    // Ambil session
-    const { data: session, error: sesErr } = await supabase
-      .from('session_ujians')
-      .select('*, jadwal_ujians(*)')
-      .eq('id', sessionId)
-      .single();
-
-    if (sesErr || !session) {
-      return NextResponse.json({ error: 'Session tidak ditemukan.' }, { status: 404 });
-    }
-
-    // BUG FIX: guard duplikat insert jika session sudah di-submit sebelumnya
-    const { data: existing } = await supabase
-      .from('nilai')
-      .select('id')
-      .eq('id_session', sessionId)
-      .maybeSingle();
-
-    if (existing) {
-      // Nilai sudah ada, return data yang ada tanpa insert ulang
-      const { data: existingNilai } = await supabase
-        .from('nilai')
-        .select('*')
-        .eq('id_session', sessionId)
-        .single();
-      return NextResponse.json(existingNilai);
-    }
-
-    // Ambil semua soal ujian + jawaban siswa
-    const jadwalId = session.id_jadwal as string;
-    const siswaId  = session.id_siswa as string;
-
-    const { data: soals } = await supabase
-      .from('soals')
-      .select('id, jawaban_benar, bobot')
-      .eq('id_ujian', (session.jadwal_ujians as { id_ujian: string }).id_ujian);
-
-    const { data: jawabans } = await supabase
-      .from('jawabans')
-      .select('id_soal, jawaban_siswa')
-      .eq('id_session', sessionId);
-
-    const jawabanMap = new Map((jawabans ?? []).map((j) => [j.id_soal, j.jawaban_siswa]));
-
-    let jumlah_benar = 0;
-    let jumlah_salah = 0;
-    let jumlah_kosong = 0;
-    let total_bobot = 0;
-
-    // Hitung nilai + kumpulkan update benar_salah
-    const updates: Promise<unknown>[] = [];
-
-    for (const soal of soals ?? []) {
-      const jawaban = jawabanMap.get(soal.id);
-      if (!jawaban) {
-        jumlah_kosong++;
-      } else if (jawaban === soal.jawaban_benar) {
-        jumlah_benar++;
-        total_bobot += soal.bobot;
-      } else {
-        jumlah_salah++;
-      }
-
-      // P1: kumpulkan semua update, kirim paralel — bukan sequential await per soal
-      // Cast ke Promise<unknown> karena PostgrestFilterBuilder adalah thenable tapi bukan Promise
-      updates.push(
-        supabase
-          .from('jawabans')
-          .update({ benar_salah: jawaban ? jawaban === soal.jawaban_benar : null })
-          .eq('id_session', sessionId)
-          .eq('id_soal', soal.id) as unknown as Promise<unknown>
+    // Siswa hanya boleh submit session miliknya sendiri
+    if (auth.role === 'siswa') {
+      const siswa = await queryOne<{ id: string }>(
+        'SELECT id FROM siswas WHERE id_user = $1 LIMIT 1',
+        [auth.id]
       );
+      if (!siswa) return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+
+      const sess = await queryOne<{ id_siswa: string }>(
+        'SELECT id_siswa FROM session_ujians WHERE id = $1 LIMIT 1',
+        [sessionId]
+      );
+      if (!sess) return NextResponse.json({ error: 'Session tidak ditemukan.' }, { status: 404 });
+      if (sess.id_siswa !== siswa.id)
+        return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
     }
 
-    // Kirim semua update benar_salah sekaligus secara paralel
-    await Promise.all(updates);
-
-    const totalSoal = (soals ?? []).length;
-    const nilai = totalSoal > 0 ? Math.round((jumlah_benar / totalSoal) * 100) : 0;
-    const lulus = true; // KKM tidak digunakan
-
-    // Insert nilai
-    const { data: hasilNilai, error: nilaiErr } = await supabase
-      .from('nilai')
-      .insert({
-        id_session:     sessionId,
-        id_siswa:       siswaId,
-        id_jadwal:      jadwalId,
-        jumlah_benar,
-        jumlah_salah,
-        jumlah_kosong,
-        nilai,
-        lulus,
-        submitted_at:   new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (nilaiErr) throw nilaiErr;
-
-    // Update status session menjadi selesai
-    await supabase
-      .from('session_ujians')
-      .update({ status: 'selesai' })
-      .eq('id', sessionId);
-
+    const hasilNilai = await hitungDanSimpanNilai(sessionId);
     return NextResponse.json(hasilNilai, { status: 201 });
   } catch (e) {
     console.error(e);

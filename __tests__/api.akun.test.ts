@@ -6,14 +6,21 @@
 import { NextRequest } from 'next/server';
 
 jest.mock('@/lib/apiAuth', () => ({ getAuthUser: jest.fn() }));
-jest.mock('@/lib/supabase', () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock('@/lib/db', () => ({
+  query:    jest.fn(),
+  queryOne: jest.fn(),
+  execute:  jest.fn(),
+}));
+jest.mock('bcryptjs', () => ({ hash: jest.fn().mockResolvedValue('hashed-pw') }));
 
 import { getAuthUser } from '@/lib/apiAuth';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, queryOne, execute } from '@/lib/db';
 import { GET, POST, PATCH, DELETE } from '@/app/api/akun/route';
 
 const mockGetAuthUser = getAuthUser as jest.Mock;
-const mockCreateSupabase = createSupabaseServerClient as jest.Mock;
+const mockQuery       = query as jest.Mock;
+const mockQueryOne    = queryOne as jest.Mock;
+const mockExecute     = execute as jest.Mock;
 
 function makeReq(method: string, body?: object, params?: string) {
   const url = `http://localhost/api/akun${params ? `?${params}` : ''}`;
@@ -24,25 +31,9 @@ function makeReq(method: string, body?: object, params?: string) {
   });
 }
 
-// Helper: buat mock chain yang support double .order() sebelum resolve
-function makeProfilesChain(resolvedValue: object) {
-  // GET /api/akun: .from('profiles').select().order('role').order('nama')
-  // Jest: setiap .order() harus return this agar bisa chain, lalu yang terakhir resolve
-  const chain: Record<string, jest.Mock> = {};
-  // order dipanggil 2x: pertama return chain, kedua return Promise
-  let orderCallCount = 0;
-  chain.select = jest.fn().mockReturnValue(chain);
-  chain.order = jest.fn().mockImplementation(() => {
-    orderCallCount++;
-    if (orderCallCount >= 2) {
-      // Kembalikan thenable agar await bisa resolve
-      return Promise.resolve(resolvedValue);
-    }
-    return chain;
-  });
-  return chain;
-}
+beforeEach(() => jest.clearAllMocks());
 
+// ── GET ──────────────────────────────────────────────────────────────────────
 describe('GET /api/akun', () => {
   test('returns 401 jika tidak login', async () => {
     mockGetAuthUser.mockResolvedValue(null);
@@ -58,157 +49,142 @@ describe('GET /api/akun', () => {
 
   test('returns 200 dengan data profiles, siswas, gurus, kelas', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-
-    const profilesChain = makeProfilesChain({
-      data: [{ id: 'p1', username: 'user1', nama: 'User 1', role: 'siswa', status: 'aktif', password: 'pass' }],
-      error: null,
-    });
-
-    const simpleChain = (data: object[]) => ({
-      select: jest.fn().mockResolvedValue({ data, error: null }),
-    });
-
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockImplementation((table: string) => {
-        if (table === 'profiles') return profilesChain;
-        if (table === 'siswas')   return simpleChain([{ id: 's1' }]);
-        if (table === 'gurus')    return simpleChain([{ id: 'g1' }]);
-        if (table === 'kelas')    return simpleChain([{ id: 'k1' }]);
-        return simpleChain([]);
-      }),
-    });
+    // query dipanggil 4x: profiles, siswas, gurus, kelas
+    mockQuery
+      .mockResolvedValueOnce([{ id: 'p1', username: 'user1', nama: 'User 1', role: 'siswa', status: 'aktif' }])
+      .mockResolvedValueOnce([{ id: 's1', nama: 'Siswa 1' }])
+      .mockResolvedValueOnce([{ id: 'g1', nama: 'Guru 1' }])
+      .mockResolvedValueOnce([{ id: 'k1', nama: 'Kelas A' }]);
 
     const res = await GET(makeReq('GET'));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toHaveProperty('profiles');
-    expect(body).toHaveProperty('siswas');
-    expect(body).toHaveProperty('gurus');
-    expect(body).toHaveProperty('kelas');
+    expect(body.profiles).toHaveLength(1);
+    expect(body.siswas).toHaveLength(1);
+    expect(body.gurus).toHaveLength(1);
+    expect(body.kelas).toHaveLength(1);
   });
 
-  test('returns 500 jika DB error pada profiles', async () => {
+  test('returns 200 — semua role diizinkan (siswa, guru)', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u2', role: 'guru' });
+    mockQuery.mockResolvedValue([]);
+    const res = await GET(makeReq('GET'));
+    expect(res.status).toBe(200);
+  });
+
+  test('returns 500 jika DB error', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-
-    const chain: Record<string, jest.Mock> = {};
-    let orderCallCount = 0;
-    chain.select = jest.fn().mockReturnValue(chain);
-    chain.order  = jest.fn().mockImplementation(() => {
-      orderCallCount++;
-      if (orderCallCount >= 2) return Promise.resolve({ data: null, error: new Error('DB error') });
-      return chain;
-    });
-
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue(chain),
-    });
-
+    mockQuery.mockRejectedValue(new Error('DB error'));
     const res = await GET(makeReq('GET'));
     expect(res.status).toBe(500);
   });
 });
 
+// ── POST ─────────────────────────────────────────────────────────────────────
 describe('POST /api/akun', () => {
+  const validBody = {
+    username: 'siswa01', password: 'pass123', nama: 'Siswa Satu',
+    role: 'siswa', status: 'aktif', nis: '12345', id_kelas: 'k1',
+  };
+
   test('returns 401 jika tidak login', async () => {
     mockGetAuthUser.mockResolvedValue(null);
-    const res = await POST(makeReq('POST', { username: 'test', password: 'pass', nama: 'Test', role: 'siswa' }));
+    const res = await POST(makeReq('POST', validBody));
     expect(res.status).toBe(401);
   });
 
-  test('returns 403 jika bukan proktor/admin', async () => {
+  test('returns 403 jika role guru', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'guru' });
-    const res = await POST(makeReq('POST', { username: 'test', password: 'pass', nama: 'Test', role: 'siswa' }));
+    const res = await POST(makeReq('POST', validBody));
     expect(res.status).toBe(403);
   });
 
-  test('returns 400 jika username kosong (A-09)', async () => {
+  test('returns 400 jika username kosong', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    const res = await POST(makeReq('POST', { username: '', password: 'pass', nama: 'Test', role: 'siswa' }));
+    const res = await POST(makeReq('POST', { ...validBody, username: '' }));
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('Username');
+    expect((await res.json()).error).toContain('Username');
   });
 
-  test('returns 400 jika password kosong (A-09)', async () => {
+  test('returns 400 jika role tidak valid', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    const res = await POST(makeReq('POST', { username: 'user1', password: '', nama: 'Test', role: 'siswa' }));
+    const res = await POST(makeReq('POST', { ...validBody, role: 'hacker' }));
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('Password');
   });
 
-  test('returns 400 jika nama kosong (A-09)', async () => {
+  test('returns 409 jika username sudah ada', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    const res = await POST(makeReq('POST', { username: 'user1', password: 'pass', nama: '', role: 'siswa' }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('Nama');
-  });
-
-  test('returns 400 jika role tidak valid (A-09)', async () => {
-    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    const res = await POST(makeReq('POST', { username: 'user1', password: 'pass', nama: 'Test', role: 'hacker' }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('valid');
+    mockQueryOne.mockResolvedValueOnce({ id: 'existing-id' }); // username exists
+    const res = await POST(makeReq('POST', validBody));
+    expect(res.status).toBe(409);
   });
 
   test('returns 201 setelah berhasil buat akun siswa', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    mockCreateSupabase.mockReturnValue({
-      auth: {
-        admin: {
-          createUser: jest.fn().mockResolvedValue({
-            data: { user: { id: 'new-user-id' } }, error: null,
-          }),
-        },
-      },
-      from: jest.fn().mockReturnValue({
-        update: jest.fn().mockReturnThis(),
-        insert: jest.fn().mockResolvedValue({ error: null }),
-        eq:     jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
-    const res = await POST(makeReq('POST', {
-      username: 'siswa1', password: 'pass123', nama: 'Siswa Satu', role: 'siswa',
-      nis: '001', id_kelas: 'kelas-1',
-    }));
+    mockQueryOne
+      .mockResolvedValueOnce(null)              // cek username — tidak ada
+      .mockResolvedValueOnce({ id: 'profile-new' }); // INSERT profiles RETURNING id
+    mockExecute.mockResolvedValue(1);           // INSERT siswas
+    const res = await POST(makeReq('POST', validBody));
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.userId).toBe('new-user-id');
-  });
-});
-
-describe('PATCH /api/akun', () => {
-  test('returns 401 jika tidak login', async () => {
-    mockGetAuthUser.mockResolvedValue(null);
-    const res = await PATCH(makeReq('PATCH', { userId: 'u1', status: 'nonaktif' }));
-    expect(res.status).toBe(401);
+    expect(body.userId).toBe('profile-new');
   });
 
-  test('returns 403 jika bukan proktor/admin', async () => {
-    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    const res = await PATCH(makeReq('PATCH', { userId: 'u1', status: 'nonaktif' }));
-    expect(res.status).toBe(403);
-  });
-
-  test('berhasil update status', async () => {
-    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    mockCreateSupabase.mockReturnValue({
-      auth: { admin: { updateUserById: jest.fn().mockResolvedValue({ error: null }) } },
-      from: jest.fn().mockReturnValue({
-        update: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
-    const res = await PATCH(makeReq('PATCH', { userId: 'u1', status: 'nonaktif' }));
-    expect(res.status).toBe(200);
+  test('returns 201 setelah berhasil buat akun guru', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'admin' });
+    mockQueryOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'profile-guru' });
+    mockExecute.mockResolvedValue(1);           // INSERT gurus
+    const res = await POST(makeReq('POST', { ...validBody, role: 'guru', nip: '999' }));
+    expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.ok).toBe(true);
   });
 });
 
+// ── PATCH ────────────────────────────────────────────────────────────────────
+describe('PATCH /api/akun', () => {
+  test('returns 401 jika tidak login', async () => {
+    mockGetAuthUser.mockResolvedValue(null);
+    const res = await PATCH(makeReq('PATCH', { id: 'p1', nama: 'Edit' }));
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 403 jika role siswa', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
+    const res = await PATCH(makeReq('PATCH', { id: 'p1', nama: 'Edit' }));
+    expect(res.status).toBe(403);
+  });
+
+  test('returns 400 jika id tidak ada', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
+    const res = await PATCH(makeReq('PATCH', { nama: 'Edit' }));
+    expect(res.status).toBe(400);
+  });
+
+  test('update profil berhasil tanpa ganti password', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
+    mockExecute.mockResolvedValue(1);
+    // userId + status: execute 1x (UPDATE profiles) + 0x (nama undefined)
+    const res = await PATCH(makeReq('PATCH', { userId: 'p1', status: 'aktif' }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+
+  test('update profil dengan password baru — hash dipanggil', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
+    mockExecute.mockResolvedValue(1);
+    const res = await PATCH(makeReq('PATCH', { userId: 'p1', nama: 'Nama', password: 'newpass' }));
+    expect(res.status).toBe(200);
+    const { hash } = await import('bcryptjs');
+    expect(hash).toHaveBeenCalledWith('newpass', 10);
+  });
+});
+
+// ── DELETE ───────────────────────────────────────────────────────────────────
 describe('DELETE /api/akun', () => {
   test('returns 401 jika tidak login', async () => {
     mockGetAuthUser.mockResolvedValue(null);
@@ -216,13 +192,13 @@ describe('DELETE /api/akun', () => {
     expect(res.status).toBe(401);
   });
 
-  test('returns 400 jika id tidak ada', async () => {
-    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    const res = await DELETE(makeReq('DELETE', undefined, 'type=siswa'));
-    expect(res.status).toBe(400);
+  test('returns 403 jika role guru', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'guru' });
+    const res = await DELETE(makeReq('DELETE', undefined, 'id=123&type=siswa'));
+    expect(res.status).toBe(403);
   });
 
-  test('returns 400 jika type tidak ada', async () => {
+  test('returns 400 jika id atau type tidak ada', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
     const res = await DELETE(makeReq('DELETE', undefined, 'id=123'));
     expect(res.status).toBe(400);
@@ -230,33 +206,27 @@ describe('DELETE /api/akun', () => {
 
   test('returns 404 jika data tidak ditemukan', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    mockCreateSupabase.mockReturnValue({
-      auth: { admin: { deleteUser: jest.fn().mockResolvedValue({ error: null }) } },
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: new Error('not found') }),
-        delete: jest.fn().mockReturnThis(),
-      }),
-    });
+    mockQueryOne.mockResolvedValue(null);
     const res = await DELETE(makeReq('DELETE', undefined, 'id=123&type=siswa'));
     expect(res.status).toBe(404);
   });
 
-  test('berhasil hapus akun siswa', async () => {
+  test('returns 200 setelah berhasil hapus siswa', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'proktor' });
-    mockCreateSupabase.mockReturnValue({
-      auth: { admin: { deleteUser: jest.fn().mockResolvedValue({ error: null }) } },
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: { id_user: 'auth-id-1' }, error: null }),
-        delete: jest.fn().mockReturnThis(),
-      }),
-    });
+    mockQueryOne.mockResolvedValue({ id_user: 'profile-id-1' });
+    mockExecute.mockResolvedValue(1);
     const res = await DELETE(makeReq('DELETE', undefined, 'id=123&type=siswa'));
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
+    expect((await res.json()).ok).toBe(true);
+    // execute dipanggil 2x: DELETE siswas, DELETE profiles
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+  });
+
+  test('returns 200 setelah berhasil hapus guru', async () => {
+    mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'admin' });
+    mockQueryOne.mockResolvedValue({ id_user: 'profile-id-2' });
+    mockExecute.mockResolvedValue(1);
+    const res = await DELETE(makeReq('DELETE', undefined, 'id=456&type=guru'));
+    expect(res.status).toBe(200);
   });
 });

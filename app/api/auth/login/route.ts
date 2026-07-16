@@ -1,20 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseAuthClient, createSupabaseServerClient } from '@/lib/supabase';
-import { authLog, authError } from '@/lib/authDebug';
+import { SignJWT } from 'jose';
+import { compare } from 'bcryptjs';
+import { queryOne, query } from '@/lib/db';
 
-// Cookie names
 export const ACCESS_TOKEN_COOKIE  = 'umbk-access-token';
 export const REFRESH_TOKEN_COOKIE = 'umbk-refresh-token';
 
-// Cookie options — HttpOnly, Secure (prod), SameSite=Lax
 const COOKIE_BASE = {
   httpOnly: true,
-  // Secure hanya aktif jika eksplisit di-enable via env var
-  // Untuk deployment HTTP (non-HTTPS), biarkan false agar cookie terkirim
   secure:   process.env.COOKIE_SECURE === 'true',
   sameSite: 'lax' as const,
   path:     '/',
 };
+
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET env var tidak diset.');
+  return new TextEncoder().encode(secret);
+}
+
+interface Profile {
+  id: string;
+  username: string;
+  password: string;
+  nama: string;
+  role: string;
+  status: string;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,34 +39,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Login via Supabase Auth
-    const authClient = createSupabaseAuthClient();
-    const { data: authData, error: authError_ } = await authClient.auth.signInWithPassword({
-      email: `${username}@umbk.local`,
-      password,
-    });
+    // Ambil profil berdasarkan username
+    const profile = await queryOne<Profile>(
+      'SELECT id, username, password, nama, role, status FROM profiles WHERE username = $1',
+      [username]
+    );
 
-    if (authError_ || !authData.user || !authData.session) {
-      authError('REDIRECT_LOGIN', `Login failed: ${authError_?.message}`);
+    if (!profile) {
       return NextResponse.json(
         { error: 'Username atau password salah.' },
         { status: 401 }
       );
     }
 
-    const supabase = createSupabaseServerClient();
-
-    // Ambil profil
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', authData.user.id)
-      .single();
-
-    if (profileError || !profile) {
+    // Verifikasi password dengan bcrypt
+    const passwordValid = await compare(password, profile.password);
+    if (!passwordValid) {
       return NextResponse.json(
-        { error: 'Profil pengguna tidak ditemukan.' },
-        { status: 404 }
+        { error: 'Username atau password salah.' },
+        { status: 401 }
       );
     }
 
@@ -65,47 +68,51 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Sign JWT — berlaku 1 jam
+    const accessToken = await new SignJWT({
+      sub:      profile.id,
+      role:     profile.role,
+      username: profile.username,
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(getJwtSecret());
+
     // Ambil data siswa / guru
     let siswa = null;
     let guru  = null;
 
     if (profile.role === 'siswa') {
-      const { data } = await supabase
-        .from('siswas').select('*').eq('id_user', profile.id).single();
-      siswa = data;
+      const rows = await query(
+        'SELECT * FROM siswas WHERE id_user = $1 LIMIT 1',
+        [profile.id]
+      );
+      siswa = rows[0] ?? null;
     }
     if (profile.role === 'guru') {
-      const { data } = await supabase
-        .from('gurus').select('*').eq('id_user', profile.id).single();
-      guru = data;
+      const rows = await query(
+        'SELECT * FROM gurus WHERE id_user = $1 LIMIT 1',
+        [profile.id]
+      );
+      guru = rows[0] ?? null;
     }
 
-    authLog('LOGIN_SUCCESS', `role=${profile.role} user=${profile.username}`);
-
-    const userData = {
-      id:       profile.id,
-      username: profile.username,
-      nama:     profile.nama,
-      role:     profile.role,
-      status:   profile.status,
-    };
-
     const res = NextResponse.json({
-      user:  userData,
+      user: {
+        id:       profile.id,
+        username: profile.username,
+        nama:     profile.nama,
+        role:     profile.role,
+        status:   profile.status,
+      },
       siswa,
       guru,
-      // Kembalikan token ke client agar browser Supabase client bisa setSession()
-      access_token:  authData.session.access_token,
-      refresh_token: authData.session.refresh_token,
+      access_token: accessToken,
     });
 
-    // Simpan token di HttpOnly cookie agar persist saat refresh
-    const accessExpires  = new Date(authData.session.expires_at! * 1000);
-    // Refresh token bertahan 30 hari (Supabase default rotating)
-    const refreshExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    res.cookies.set(ACCESS_TOKEN_COOKIE,  authData.session.access_token,  { ...COOKIE_BASE, expires: accessExpires });
-    res.cookies.set(REFRESH_TOKEN_COOKIE, authData.session.refresh_token, { ...COOKIE_BASE, expires: refreshExpires });
+    const accessExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 jam
+    res.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, { ...COOKIE_BASE, expires: accessExpires });
 
     return res;
   } catch (err: unknown) {

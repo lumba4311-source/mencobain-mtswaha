@@ -1,224 +1,138 @@
 /**
- * Unit tests untuk middleware.ts
- * Test: F-01 role-check, token validation, redirect logic, token refresh
+ * Unit tests untuk middleware.ts (JWT mandiri via jose)
+ * Test: F-01 role-check, token validation, redirect logic
  */
 
 import { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
 
-// Mock @supabase/supabase-js
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(),
+jest.mock('jose', () => ({
+  jwtVerify: jest.fn(),
 }));
 
-import { createClient } from '@supabase/supabase-js';
+import { jwtVerify } from 'jose';
 import { middleware } from '@/middleware';
 
-const mockCreateClient = createClient as jest.Mock;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const mockJwtVerify = jwtVerify as jest.Mock;
 
 function makeReq(pathname: string, cookies: Record<string, string> = {}) {
   const url = `http://localhost${pathname}`;
   const req = new NextRequest(url);
-  // Set cookies via header (NextRequest tidak support set cookie langsung di constructor)
-  const cookieHeader = Object.entries(cookies)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('; ');
-  if (cookieHeader) {
-    Object.defineProperty(req, 'cookies', {
-      value: {
-        get: (name: string) => cookies[name] ? { value: cookies[name] } : undefined,
-      },
-    });
-  } else {
-    Object.defineProperty(req, 'cookies', {
-      value: { get: () => undefined },
-    });
-  }
+  Object.defineProperty(req, 'cookies', {
+    value: {
+      get: (name: string) => cookies[name] ? { value: cookies[name] } : undefined,
+    },
+    configurable: true,
+  });
   return req;
 }
 
-function mockSupabaseService(getUserResult: object, profileData?: object) {
-  mockCreateClient.mockImplementation((_url: string, key: string) => ({
-    auth: {
-      getUser:         jest.fn().mockResolvedValue(getUserResult),
-      refreshSession:  jest.fn().mockResolvedValue({ data: { session: null, user: null }, error: new Error('no refresh') }),
-    },
-    from: jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnThis(),
-      eq:     jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({ data: profileData ?? null, error: null }),
-    }),
-  }));
-}
-
-// ─── Halaman publik ───────────────────────────────────────────────────────────
-
 describe('middleware — halaman publik', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL        = 'http://localhost:8000';
-    process.env.SUPABASE_SERVICE_ROLE_KEY       = 'service-key';
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY   = 'anon-key';
+    process.env.JWT_SECRET = 'test-secret-min-32-chars-long-enough';
   });
 
   test('lewati tanpa redirect untuk halaman publik (/)', async () => {
-    const req = makeReq('/');
-    const res = await middleware(req);
-    // NextResponse.next() — tidak ada location header
+    const res = await middleware(makeReq('/'));
     expect(res.headers.get('location')).toBeNull();
   });
 
   test('lewati tanpa redirect untuk /api/...', async () => {
-    const req = makeReq('/api/session');
-    const res = await middleware(req);
+    const res = await middleware(makeReq('/api/session'));
     expect(res.headers.get('location')).toBeNull();
   });
 });
 
-// ─── Redirect ke login (tidak ada token) ─────────────────────────────────────
-
 describe('middleware — tidak ada token', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL        = 'http://localhost:8000';
-    process.env.SUPABASE_SERVICE_ROLE_KEY       = 'service-key';
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY   = 'anon-key';
-    mockCreateClient.mockReturnValue({
-      auth: {
-        getUser:        jest.fn().mockResolvedValue({ data: { user: null }, error: null }),
-        refreshSession: jest.fn().mockResolvedValue({ data: { session: null, user: null }, error: new Error('no token') }),
-      },
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: null }),
-      }),
-    });
+    process.env.JWT_SECRET = 'test-secret-min-32-chars-long-enough';
   });
 
   test('redirect ke /login dari /siswa/dashboard', async () => {
-    const req = makeReq('/siswa/dashboard');
-    const res = await middleware(req);
+    const res = await middleware(makeReq('/siswa/dashboard'));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/login');
   });
 
   test('redirect ke /login dari /proktor/dashboard', async () => {
-    const req = makeReq('/proktor/dashboard');
-    const res = await middleware(req);
+    const res = await middleware(makeReq('/proktor/dashboard'));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/login');
   });
 
-  test('/login tanpa token — boleh akses (NextResponse.next)', async () => {
-    const req = makeReq('/login');
-    const res = await middleware(req);
+  test('/login tanpa token — boleh akses', async () => {
+    const res = await middleware(makeReq('/login'));
     expect(res.headers.get('location')).toBeNull();
   });
 });
 
-// ─── Sudah login — akses /login redirect ke dashboard ────────────────────────
-
 describe('middleware — sudah login', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL        = 'http://localhost:8000';
-    process.env.SUPABASE_SERVICE_ROLE_KEY       = 'service-key';
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY   = 'anon-key';
+    process.env.JWT_SECRET = 'test-secret-min-32-chars-long-enough';
   });
 
   test('siswa akses /login → redirect ke /siswa/dashboard', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u1' } }, error: null },
-      { role: 'siswa' }
-    );
-    const req = makeReq('/login', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u1', role: 'siswa', username: 's1' } });
+    const res = await middleware(makeReq('/login', { 'umbk-access-token': 'valid-token' }));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/siswa/dashboard');
   });
 
   test('proktor akses /login → redirect ke /proktor/dashboard', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u2' } }, error: null },
-      { role: 'proktor' }
-    );
-    const req = makeReq('/login', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u2', role: 'proktor', username: 'p1' } });
+    const res = await middleware(makeReq('/login', { 'umbk-access-token': 'valid-token' }));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/proktor/dashboard');
   });
 
   test('guru akses /login → redirect ke /guru/dashboard', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u3' } }, error: null },
-      { role: 'guru' }
-    );
-    const req = makeReq('/login', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u3', role: 'guru', username: 'g1' } });
+    const res = await middleware(makeReq('/login', { 'umbk-access-token': 'valid-token' }));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/guru/dashboard');
   });
 });
 
-// ─── F-01: Role check per prefix ─────────────────────────────────────────────
-
 describe('middleware — F-01 role check', () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL        = 'http://localhost:8000';
-    process.env.SUPABASE_SERVICE_ROLE_KEY       = 'service-key';
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY   = 'anon-key';
+    process.env.JWT_SECRET = 'test-secret-min-32-chars-long-enough';
   });
 
   test('siswa akses /proktor → redirect ke /siswa/dashboard', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u1' } }, error: null },
-      { role: 'siswa' }
-    );
-    const req = makeReq('/proktor/dashboard', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u1', role: 'siswa', username: 's1' } });
+    const res = await middleware(makeReq('/proktor/dashboard', { 'umbk-access-token': 'valid-token' }));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/siswa/dashboard');
   });
 
   test('guru akses /siswa → redirect ke /guru/dashboard', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u2' } }, error: null },
-      { role: 'guru' }
-    );
-    const req = makeReq('/siswa/ujian/abc', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u2', role: 'guru', username: 'g1' } });
+    const res = await middleware(makeReq('/siswa/ujian/abc', { 'umbk-access-token': 'valid-token' }));
     expect(res.status).toBe(307);
     expect(res.headers.get('location')).toContain('/guru/dashboard');
   });
 
-  test('proktor akses /proktor → diizinkan (NextResponse.next)', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u3' } }, error: null },
-      { role: 'proktor' }
-    );
-    const req = makeReq('/proktor/dashboard', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
-    // status 200 = NextResponse.next()
+  test('proktor akses /proktor → diizinkan', async () => {
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u3', role: 'proktor', username: 'p1' } });
+    const res = await middleware(makeReq('/proktor/dashboard', { 'umbk-access-token': 'valid-token' }));
     expect(res.headers.get('location')).toBeNull();
   });
 
-  test('admin akses /proktor → diizinkan (NextResponse.next)', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u4' } }, error: null },
-      { role: 'admin' }
-    );
-    const req = makeReq('/proktor/monitoring', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+  test('admin akses /proktor → diizinkan', async () => {
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u4', role: 'admin', username: 'a1' } });
+    const res = await middleware(makeReq('/proktor/monitoring', { 'umbk-access-token': 'valid-token' }));
     expect(res.headers.get('location')).toBeNull();
   });
 
   test('siswa akses /siswa → diizinkan', async () => {
-    mockSupabaseService(
-      { data: { user: { id: 'u5' } }, error: null },
-      { role: 'siswa' }
-    );
-    const req = makeReq('/siswa/dashboard', { 'umbk-access-token': 'valid-token' });
-    const res = await middleware(req);
+    mockJwtVerify.mockResolvedValue({ payload: { sub: 'u5', role: 'siswa', username: 's1' } });
+    const res = await middleware(makeReq('/siswa/dashboard', { 'umbk-access-token': 'valid-token' }));
     expect(res.headers.get('location')).toBeNull();
+  });
+
+  test('token expired → redirect ke /login', async () => {
+    mockJwtVerify.mockRejectedValue(new Error('JWTExpired'));
+    const res = await middleware(makeReq('/siswa/dashboard', { 'umbk-access-token': 'expired-token' }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toContain('/login');
   });
 });

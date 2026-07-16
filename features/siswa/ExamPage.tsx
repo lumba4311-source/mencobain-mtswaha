@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import type { Soal, SessionUjian, Jawaban, JawabanBenar, JadwalUjian, Ujian } from '@/types';
+import { RichText } from '@/components/RichText';
 
 type StatusSoal = 'belum' | 'sudah' | 'ragu';
 
@@ -30,10 +31,13 @@ export default function ExamPage() {
   const [ujianInfo, setUjianInfo] = useState<Ujian | null>(null);
   const [notify, setNotify] = useState<{ msg: string; type: 'warning' | 'info' } | null>(null);
 
-  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionRef   = useRef<SessionUjian | null>(null);
-  const timeLeftRef  = useRef(0);
+  const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionRef      = useRef<SessionUjian | null>(null);
+  const timeLeftRef     = useRef(0);
+  // [AUTH-01+02] Mutex — cegah handleAutoSubmit dipanggil dua kali bersamaan
+  // (bisa terjadi dari timer 1 detik dan re-sync 10 detik secara bersamaan)
+  const submittingRef   = useRef(false);
 
   // Sync refs
   useEffect(() => { sessionRef.current = session; }, [session]);
@@ -60,10 +64,16 @@ export default function ExamPage() {
     if (isLoading || !siswa || !jadwalId) return;
     async function tryResume() {
       if (!siswa) return;
-      const sesRes = await fetch(`/api/session?siswaId=${siswa.id}&jadwalId=${jadwalId}`);
-      const existing: SessionUjian | null = await sesRes.json();
-      if (existing && existing.status === 'berlangsung') {
-        await resumeExam(existing);
+      try {
+        const sesRes = await fetch(`/api/session?siswaId=${siswa.id}&jadwalId=${jadwalId}`);
+        if (!sesRes.ok) return; // [TIMER-04] Jangan crash jika API error
+        const existing: SessionUjian | null = await sesRes.json();
+        if (existing && existing.status === 'berlangsung') {
+          await resumeExam(existing);
+        }
+      } catch {
+        // Jaringan error saat resume — biarkan siswa mulai dari confirm screen
+        console.error('[tryResume] Gagal mengambil session, siswa perlu mulai ulang.');
       }
     }
     tryResume();
@@ -93,7 +103,7 @@ export default function ExamPage() {
       });
     }, 1000);
 
-    // Re-sync waktu dari deadline tiap 30 detik untuk cegah clock drift
+    // Re-sync waktu dari deadline tiap 10 detik untuk cegah clock drift
     // Sekaligus simpan sisa_waktu ke DB sebagai metadata (bukan source of truth)
     saveTimerRef.current = setInterval(() => {
       const ses = sessionRef.current;
@@ -114,9 +124,9 @@ export default function ExamPage() {
         return;
       }
 
-      // P6: sisa_waktu dihitung dari deadline di klien — tidak perlu PATCH ke DB tiap 30 detik
+      // P6: sisa_waktu dihitung dari deadline di klien — tidak perlu PATCH ke DB tiap 10 detik
       // deadline adalah source of truth, mengurangi 140 req/menit untuk 70 siswa
-    }, 30000);
+    }, 10000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -150,12 +160,79 @@ export default function ExamPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, submitted, siswa, jadwalId]);
 
-  const handleAutoSubmit = useCallback(async () => {
-    const ses = sessionRef.current;
-    if (!ses) return;
+  // ── Anti-cheat: block keyboard shortcuts saat ujian berlangsung ──────────
+  useEffect(() => {
+    if (phase !== 'exam' || submitted) return;
 
-    // B-01/B-02: Jangan clear timer atau set submitted sebelum fetch berhasil.
-    // Jika fetch gagal, timer tetap berjalan dan siswa masih bisa submit manual.
+    function handleKeyDown(e: KeyboardEvent) {
+      // F12 — DevTools
+      if (e.key === 'F12') { e.preventDefault(); return; }
+      // Ctrl+Shift+I/J/C — DevTools
+      if (e.ctrlKey && e.shiftKey && ['i','I','j','J','c','C'].includes(e.key)) { e.preventDefault(); return; }
+      // Ctrl+U — View source
+      if (e.ctrlKey && (e.key === 'u' || e.key === 'U')) { e.preventDefault(); return; }
+      // Ctrl+S — Save page
+      if (e.ctrlKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); return; }
+      // Ctrl+P — Print
+      if (e.ctrlKey && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); return; }
+      // Alt+F4 — Close window
+      if (e.altKey && e.key === 'F4') { e.preventDefault(); return; }
+      // Alt+Tab — Switch window
+      if (e.altKey && e.key === 'Tab') { e.preventDefault(); return; }
+      // Windows key (Meta)
+      if (e.key === 'Meta') { e.preventDefault(); return; }
+      // Esc — cegah keluar fullscreen / tutup dialog
+      if (e.key === 'Escape') { e.preventDefault(); return; }
+    }
+
+    function handleContextMenu(e: MouseEvent) {
+      e.preventDefault();
+    }
+
+    // Re-enter fullscreen jika siswa keluar (Esc, browser button, dll)
+    function handleFullscreenChange() {
+      const isFs = !!(
+        document.fullscreenElement ||
+        (document as unknown as Record<string, unknown>).webkitFullscreenElement ||
+        (document as unknown as Record<string, unknown>).mozFullScreenElement
+      );
+      if (!isFs) {
+        // Tunggu sebentar lalu minta fullscreen lagi
+        setTimeout(() => {
+          const el = document.documentElement;
+          if (el.requestFullscreen) {
+            el.requestFullscreen().catch(() => {});
+          } else if ((el as unknown as Record<string, () => Promise<void>>).webkitRequestFullscreen) {
+            (el as unknown as Record<string, () => Promise<void>>).webkitRequestFullscreen().catch(() => {});
+          }
+        }, 300);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('contextmenu', handleContextMenu, true);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('contextmenu', handleContextMenu, true);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+    };
+  }, [phase, submitted]);
+
+  const handleAutoSubmit = useCallback(async () => {
+    // [AUTH-01+02] Mutex — cegah double submit jika timer 1s dan re-sync 10s
+    // terpicu bersamaan saat sisa waktu = 0
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
+    const ses = sessionRef.current;
+    if (!ses) { submittingRef.current = false; return; }
+
+    // Tampilkan notif dulu sebelum fetch — UX lebih baik
     setNotify({ msg: 'Waktu ujian telah habis. Jawaban kamu otomatis dikumpulkan.', type: 'warning' });
 
     try {
@@ -166,8 +243,9 @@ export default function ExamPage() {
       });
 
       if (!res.ok) {
-        // Fetch gagal — jangan matikan timer, biarkan siswa submit manual
+        // Fetch gagal — reset mutex, biarkan siswa submit manual
         setNotify({ msg: 'Gagal mengumpulkan jawaban otomatis. Silakan kumpulkan manual.', type: 'warning' });
+        submittingRef.current = false;
         return;
       }
 
@@ -178,8 +256,9 @@ export default function ExamPage() {
       setSubmitted(true);
       setTimeout(() => router.replace('/siswa/dashboard'), 3000);
     } catch {
-      // Network error — jangan matikan timer
+      // Network error — reset mutex, jangan matikan timer, biarkan siswa submit manual
       setNotify({ msg: 'Gagal mengumpulkan jawaban otomatis. Silakan kumpulkan manual.', type: 'warning' });
+      submittingRef.current = false;
     }
   }, [router]);
 
@@ -609,7 +688,7 @@ export default function ExamPage() {
       )}
 
       {/* Body: soal + panel */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 220px', gap: 0, maxWidth: '100%', overflow: 'hidden' }}>
+      <div className="exam-body">
         {/* Area Soal */}
         <main style={{ padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Nomor + bobot */}
@@ -636,7 +715,7 @@ export default function ExamPage() {
                 />
               </div>
             )}
-            <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{currentSoal.pertanyaan}</p>
+            <p style={{ margin: 0 }}><RichText text={currentSoal.pertanyaan} /></p>
           </div>
 
           {/* Opsi */}
@@ -651,7 +730,7 @@ export default function ExamPage() {
               >
                 <span className="opsi-label">{displayKey}</span>
                 <span style={{ flex: 1, textAlign: 'left' }}>
-                  <span>{text}</span>
+                  <RichText text={text ?? ''} />
                   {img && (
                     <img
                       src={img}
@@ -720,7 +799,7 @@ export default function ExamPage() {
         </main>
 
         {/* Panel Navigasi */}
-        <aside style={{
+        <aside className="exam-nav-panel" style={{
           backgroundColor: 'var(--color-surface)',
           borderLeft: '1px solid var(--color-border-subtle)',
           padding: '1rem',

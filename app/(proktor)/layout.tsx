@@ -5,14 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/features/auth/AuthProvider';
 
 export default function ProktorLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!user) router.replace('/login');
-    else if (user.role !== 'proktor' && user.role !== 'admin') router.replace('/login');
-  }, [user, router]);
+    if (isLoading) return;
+    if (!user || (user.role !== 'proktor' && user.role !== 'admin')) router.replace('/login');
+  }, [user, isLoading, router]);
 
+  if (isLoading) return null;
   if (!user || (user.role !== 'proktor' && user.role !== 'admin')) return null;
   return <>{children}</>;
 }

@@ -1,31 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, queryOne, execute } from '@/lib/db';
 import { getAuthUser } from '@/lib/apiAuth';
 
-// GET /api/soal/[ujianId] — ambil semua soal untuk ujian tertentu
+// GET /api/soal/[ujianId]
 export async function GET(req: NextRequest, { params }: { params: Promise<{ ujianId: string }> }) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
 
   try {
     const { ujianId } = await params;
-    const supabase = createSupabaseServerClient();
 
-    const { data, error } = await supabase
-      .from('soals')
-      .select('*')
-      .eq('id_ujian', ujianId)
-      .order('nomor', { ascending: true });
+    // Guru/proktor/admin mendapat seluruh data termasuk jawaban_benar
+    // Siswa TIDAK mendapat jawaban_benar — field di-strip sebelum dikirim
+    const soals = await query(
+      'SELECT * FROM soals WHERE id_ujian = $1 ORDER BY nomor ASC',
+      [ujianId]
+    );
 
-    if (error) throw error;
-    return NextResponse.json(data ?? []);
+    if (auth.role === 'siswa') {
+      // Strip jawaban_benar agar tidak bisa dicuri dari network tab
+      const stripped = soals.map(({ jawaban_benar: _jb, ...rest }: Record<string, unknown>) => rest);
+      return NextResponse.json(stripped);
+    }
+
+    return NextResponse.json(soals);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Gagal mengambil soal.' }, { status: 500 });
   }
 }
 
-// POST /api/soal/[ujianId] — simpan/replace semua soal (bulk upsert)
+// POST /api/soal/[ujianId] — replace semua soal (bulk)
 export async function POST(req: NextRequest, { params }: { params: Promise<{ ujianId: string }> }) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
@@ -34,50 +39,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ uji
 
   try {
     const { ujianId } = await params;
-    const supabase = createSupabaseServerClient();
     const { soals } = await req.json();
 
-    // A-03: Ambil ID soal lama sebelum insert — baru delete setelah insert berhasil
-    // Ini menghindari data loss jika insert gagal (tidak ada delete-first pattern)
-    const { data: soalLama } = await supabase
-      .from('soals')
-      .select('id')
-      .eq('id_ujian', ujianId);
+    // [API-08] Guru hanya boleh edit soal ujian miliknya sendiri
+    if (auth.role === 'guru') {
+      const guru = await queryOne<{ id: string }>(
+        'SELECT id FROM gurus WHERE id_user = $1 LIMIT 1',
+        [auth.id]
+      );
+      if (!guru) return NextResponse.json({ error: 'Profil guru tidak ditemukan.' }, { status: 404 });
 
-    const idLama = (soalLama ?? []).map((s: { id: string }) => s.id);
-
-    const toInsert = soals.map((s: {
-      nomor: number; pertanyaan: string;
-      opsi_a: string; opsi_b: string; opsi_c: string; opsi_d: string;
-      opsi_a_img?: string; opsi_b_img?: string; opsi_c_img?: string; opsi_d_img?: string;
-      jawaban_benar: string; bobot: number; gambar_url?: string;
-    }) => ({
-      id_ujian: ujianId,
-      nomor: s.nomor,
-      pertanyaan: s.pertanyaan,
-      opsi_a: s.opsi_a,
-      opsi_b: s.opsi_b,
-      opsi_c: s.opsi_c,
-      opsi_d: s.opsi_d,
-      opsi_a_img: s.opsi_a_img ?? null,
-      opsi_b_img: s.opsi_b_img ?? null,
-      opsi_c_img: s.opsi_c_img ?? null,
-      opsi_d_img: s.opsi_d_img ?? null,
-      jawaban_benar: s.jawaban_benar,
-      bobot: s.bobot,
-      gambar_url: s.gambar_url ?? null,
-    }));
-
-    // Hapus soal lama dulu — ID sudah dicatat di atas sehingga tidak ada race condition
-    // Unique constraint (id_ujian, nomor) tidak bisa dilanggar jika soal lama sudah dihapus
-    if (idLama.length) {
-      const { error: deleteErr } = await supabase.from('soals').delete().in('id', idLama);
-      if (deleteErr) throw deleteErr;
+      const ujian = await queryOne<{ id_guru: string }>(
+        'SELECT id_guru FROM ujians WHERE id = $1 LIMIT 1',
+        [ujianId]
+      );
+      if (!ujian) return NextResponse.json({ error: 'Ujian tidak ditemukan.' }, { status: 404 });
+      if (ujian.id_guru !== guru.id)
+        return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
     }
 
-    // Baru insert soal baru setelah soal lama bersih
-    const { error: insertErr } = await supabase.from('soals').insert(toInsert);
-    if (insertErr) throw insertErr;
+    // Hapus soal lama, insert baru
+    await execute('DELETE FROM soals WHERE id_ujian = $1', [ujianId]);
+
+    for (const s of soals) {
+      await execute(
+        `INSERT INTO soals
+           (id_ujian, nomor, pertanyaan, opsi_a, opsi_b, opsi_c, opsi_d,
+            opsi_a_img, opsi_b_img, opsi_c_img, opsi_d_img,
+            jawaban_benar, bobot, gambar_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          ujianId, s.nomor, s.pertanyaan,
+          s.opsi_a, s.opsi_b, s.opsi_c, s.opsi_d,
+          s.opsi_a_img ?? null, s.opsi_b_img ?? null,
+          s.opsi_c_img ?? null, s.opsi_d_img ?? null,
+          s.jawaban_benar, s.bobot, s.gambar_url ?? null,
+        ]
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

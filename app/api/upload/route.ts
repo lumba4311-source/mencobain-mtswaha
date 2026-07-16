@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join, resolve, basename } from 'path';
 import { getAuthUser } from '@/lib/apiAuth';
 
 // Cross-platform: simpan di <project-root>/uploads/
 // Di production (Docker/Linux) ini akan jadi /app/uploads via volume mount
 const UPLOAD_DIR = resolve(process.cwd(), 'uploads');
+
+// [API-12] Whitelist extension yang diizinkan — tolak SVG (XSS risk) dan format non-gambar
+const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+const ALLOWED_FOLDERS    = new Set(['soal', 'misc']);
 
 export async function POST(req: NextRequest) {
   const auth = await getAuthUser(req);
@@ -16,7 +20,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
-    const folder = (formData.get('folder') as string) ?? 'misc';
+    const folderRaw = (formData.get('folder') as string) ?? 'misc';
 
     if (!file) {
       return NextResponse.json({ error: 'File tidak ditemukan.' }, { status: 400 });
@@ -30,14 +34,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ukuran gambar maksimal 10MB.' }, { status: 400 });
     }
 
+    // [API-11] Sanitasi folder — hanya izinkan nama folder yang sudah diwhitelist
+    // mencegah path traversal seperti folder = "../../etc"
+    const folder = ALLOWED_FOLDERS.has(folderRaw) ? folderRaw : 'misc';
+
+    // [API-12] Whitelist extension — hanya izinkan format gambar yang aman
+    const ext = basename(file.name).split('.').pop()?.toLowerCase() ?? '';
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      return NextResponse.json(
+        { error: 'Format file tidak didukung. Gunakan JPG, PNG, GIF, atau WebP.' },
+        { status: 400 }
+      );
+    }
+
     // Buat direktori jika belum ada
     const targetDir = join(UPLOAD_DIR, folder);
     await mkdir(targetDir, { recursive: true });
 
-    // Nama file unik: timestamp + ext
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-    const fileName = `${Date.now()}.${ext}`;
+    // Nama file unik: timestamp + random suffix + ext
+    // Hindari collision jika banyak upload bersamaan
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const filePath = join(targetDir, fileName);
+
+    // Double-check path tidak keluar dari UPLOAD_DIR (defense in depth)
+    if (!resolve(filePath).startsWith(UPLOAD_DIR)) {
+      return NextResponse.json({ error: 'Path tidak valid.' }, { status: 400 });
+    }
 
     // Tulis file ke disk
     const buffer = Buffer.from(await file.arrayBuffer());

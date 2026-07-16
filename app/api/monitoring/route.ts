@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, queryOne, execute } from '@/lib/db';
 import { getAuthUser } from '@/lib/apiAuth';
+import { hitungDanSimpanNilai } from '../nilai/route';
 
-// GET /api/monitoring?jadwalId=xxx — data monitoring proktor
+// GET /api/monitoring?jadwalId=xxx
 export async function GET(req: NextRequest) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
@@ -10,82 +11,106 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
 
   try {
-    const supabase = createSupabaseServerClient();
     const jadwalId = new URL(req.url).searchParams.get('jadwalId');
 
-    if (!jadwalId) {
+    if (!jadwalId)
       return NextResponse.json({ error: 'jadwalId wajib diisi.' }, { status: 400 });
-    }
 
     // Ambil jadwal + ujian
-    const { data: jadwal } = await supabase
-      .from('jadwal_ujians')
-      .select('*, ujians(durasi), jadwal_siswa(siswa_id)')
-      .eq('id', jadwalId)
-      .single();
+    const jadwal = await queryOne<{
+      id: string; id_ujian: string;
+      ujians: { durasi: number };
+    }>(
+      `SELECT j.*, row_to_json(u.*) AS ujians
+       FROM jadwal_ujians j
+       JOIN ujians u ON u.id = j.id_ujian
+       WHERE j.id = $1`,
+      [jadwalId]
+    );
 
     if (!jadwal) return NextResponse.json({ error: 'Jadwal tidak ditemukan.' }, { status: 404 });
 
-    const siswaIds = (jadwal.jadwal_siswa as { siswa_id: string }[]).map((s) => s.siswa_id);
+    // Ambil daftar siswa di jadwal
+    const jadwalSiswa = await query<{ siswa_id: string }>(
+      'SELECT siswa_id FROM jadwal_siswa WHERE jadwal_id = $1',
+      [jadwalId]
+    );
+
+    const siswaIds = jadwalSiswa.map(r => r.siswa_id);
     if (!siswaIds.length) return NextResponse.json([]);
 
-    // Ambil data siswa — P5: kolom spesifik, hindari foto/data besar yang tidak dipakai
-    const { data: siswas } = await supabase
-      .from('siswas')
-      .select('id, nama, nis, id_kelas')
-      .in('id', siswaIds);
+    // Ambil data siswa
+    const placeholders = siswaIds.map((_, i) => `$${i + 1}`).join(', ');
+    const siswas = await query(
+      `SELECT id, nama, nis, id_kelas FROM siswas WHERE id IN (${placeholders})`,
+      siswaIds
+    );
 
-    // Ambil semua session dalam jadwal ini — P5: kolom spesifik, skip urutan_soal/urutan_opsi
-    const { data: sessions } = await supabase
-      .from('session_ujians')
-      .select('id, id_siswa, id_jadwal, status, sisa_waktu, deadline, submitted_at')
-      .eq('id_jadwal', jadwalId);
+    // Ambil sessions dalam jadwal
+    const sessions = await query(
+      `SELECT id, id_siswa, id_jadwal, status, sisa_waktu, deadline, started_at
+       FROM session_ujians WHERE id_jadwal = $1`,
+      [jadwalId]
+    );
 
-    // Ambil jumlah jawaban per session
-    const sessionIds = (sessions ?? []).map((s) => s.id);
-    let jawabanCounts: Record<string, number> = {};
+    // Hitung jumlah jawaban per session
+    const sessionIds = sessions.map(s => (s as { id: string }).id);
+    const jawabanCounts: Record<string, number> = {};
 
     if (sessionIds.length) {
-      const { data: jawabans } = await supabase
-        .from('jawabans')
-        .select('id_session, jawaban_siswa')
-        .in('id_session', sessionIds)
-        .not('jawaban_siswa', 'is', null);
-
-      (jawabans ?? []).forEach((j) => {
-        jawabanCounts[j.id_session] = (jawabanCounts[j.id_session] ?? 0) + 1;
-      });
+      const sessPlaceholders = sessionIds.map((_, i) => `$${i + 1}`).join(', ');
+      const jawabans = await query<{ id_session: string }>(
+        `SELECT id_session FROM jawabans
+         WHERE id_session IN (${sessPlaceholders})
+         AND jawaban_siswa IS NOT NULL`,
+        sessionIds
+      );
+      for (const j of jawabans) {
+        const sid = j.id_session;
+        jawabanCounts[sid] = (jawabanCounts[sid] ?? 0) + 1;
+      }
     }
 
-    // Hitung total soal — ambil id_ujian dari jadwal langsung
-    const { count: totalSoal } = await supabase
-      .from('soals')
-      .select('id', { count: 'exact', head: true })
-      .eq('id_ujian', (jadwal as { id_ujian: string }).id_ujian ?? '');
+    // Ambil total soal untuk jadwal ini
+    const soalCount = await queryOne<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM soals WHERE id_ujian = $1',
+      [jadwal.id_ujian]
+    );
+    const totalSoal = parseInt(soalCount?.count ?? '0', 10);
 
-    const result = (siswas ?? []).map((siswa) => {
-      const session = (sessions ?? []).find((s) => s.id_siswa === siswa.id);
-      const jumlah_dijawab = session ? (jawabanCounts[session.id] ?? 0) : 0;
-      const progress_persen = totalSoal ? Math.round((jumlah_dijawab / totalSoal) * 100) : 0;
+    // Bangun response rows
+    const sessionMap: Record<string, Record<string, unknown>> = {};
+    for (const s of sessions) {
+      const sess = s as Record<string, unknown>;
+      sessionMap[sess.id_siswa as string] = sess;
+    }
+
+    const rows = siswas.map(sw => {
+      const siswa = sw as Record<string, unknown>;
+      const sess  = sessionMap[siswa.id as string];
+      const jumlahDijawab = sess ? (jawabanCounts[sess.id as string] ?? 0) : 0;
 
       return {
         siswa,
-        session: session ?? null,
-        jumlah_dijawab,
-        progress_persen,
-        // BUG FIX: sertakan durasiBatas agar timer di ProktorMonitoringPage bisa berjalan
-        durasiBatas: (jadwal.ujians as { durasi: number } | null)?.durasi ?? 90,
+        sessionId:        sess?.id ?? null,
+        status:           sess?.status ?? 'Belum Ujian',
+        sisa_waktu:       sess?.sisa_waktu ?? null,
+        started_at:       sess?.started_at ?? null,
+        deadline:         sess?.deadline ?? null,
+        jumlahDijawab,
+        totalSoal,
+        progress: totalSoal > 0 ? Math.round((jumlahDijawab / totalSoal) * 100) : 0,
       };
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(rows);
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: 'Gagal mengambil data monitoring.' }, { status: 500 });
   }
 }
 
-// POST /api/monitoring/force-submit — proktor paksa submit siswa
+// POST /api/monitoring — force submit session siswa
 export async function POST(req: NextRequest) {
   const auth = await getAuthUser(req);
   if (!auth) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
@@ -93,27 +118,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
 
   try {
-    const supabase = createSupabaseServerClient();
     const { sessionId } = await req.json();
 
-    // A-06: Validasi sessionId wajib ada — tanpa ini update bisa kena semua baris
-    if (!sessionId) {
+    if (!sessionId)
       return NextResponse.json({ error: 'sessionId wajib diisi.' }, { status: 400 });
-    }
 
-    await supabase
-      .from('session_ujians')
-      .update({ status: 'force_submit' })
-      .eq('id', sessionId);
+    // [FORCE-02] Verifikasi bahwa sessionId benar-benar ada dan ambil jadwalId-nya
+    const session = await queryOne<{ id: string; id_jadwal: string; status: string }>(
+      'SELECT id, id_jadwal, status FROM session_ujians WHERE id = $1 LIMIT 1',
+      [sessionId]
+    );
 
-    // Hitung dan simpan nilai
-    const nilaiRes = await fetch(new URL('/api/nilai', req.url).toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
-    });
+    if (!session)
+      return NextResponse.json({ error: 'Session tidak ditemukan.' }, { status: 404 });
 
-    const nilai = await nilaiRes.json();
+    // Jika sudah selesai, tidak perlu force submit lagi
+    if (session.status === 'selesai' || session.status === 'force_submit')
+      return NextResponse.json({ error: 'Session sudah selesai.' }, { status: 409 });
+
+    // Set status force_submit sebelum hitung nilai
+    await execute(
+      `UPDATE session_ujians SET status = 'force_submit' WHERE id = $1`,
+      [sessionId]
+    );
+
+    // [FORCE-01] Panggil fungsi langsung — tidak perlu fakeReq dengan auth palsu
+    const nilai = await hitungDanSimpanNilai(sessionId);
+
     return NextResponse.json({ ok: true, nilai });
   } catch (e) {
     console.error(e);

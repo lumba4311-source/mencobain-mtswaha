@@ -14,7 +14,6 @@ export default function SiswaDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [jadwalAktif, setJadwalAktif] = useState<JadwalUjian[]>([]);
   const [ujianMap, setUjianMap] = useState<Record<string, Ujian>>({});
-  const [kelasMap, setKelasMap] = useState<Record<string, string>>({});
   // jadwalId -> status session ('berlangsung' | 'selesai' | 'force_submit' | null)
   const [sessionStatusMap, setSessionStatusMap] = useState<Record<string, string | null>>({});
 
@@ -29,23 +28,17 @@ export default function SiswaDashboard() {
     Promise.all([
       fetch(`/api/jadwal?siswaId=${currentSiswaId}`),
       fetch('/api/ujian'),
-      fetch('/api/akun'),
-    ]).then(async ([jadwalRes, ujianRes, akunRes]) => {
-      // C-01/C-02: cek res.ok sebelum parse JSON — hindari crash saat API error
-      if (!jadwalRes.ok || !ujianRes.ok || !akunRes.ok) {
+    ]).then(async ([jadwalRes, ujianRes]) => {
+      if (!jadwalRes.ok || !ujianRes.ok) {
         console.error('Gagal memuat data dashboard siswa: salah satu API error');
         return;
       }
       const jadwals: JadwalUjian[] = await jadwalRes.json();
       const ujians: Ujian[]        = await ujianRes.json();
-      const akun                   = await akunRes.json();
       const map: Record<string, Ujian> = {};
       ujians.forEach((u: Ujian) => { map[u.id] = u; });
       setUjianMap(map);
       setJadwalAktif(jadwals);
-      const km: Record<string, string> = {};
-      (akun.kelas ?? []).forEach((k: { id: string; nama_kelas: string }) => { km[k.id] = k.nama_kelas; });
-      setKelasMap(km);
 
       // Load status session untuk setiap jadwal
       const sessionFetches = (jadwals as JadwalUjian[]).map((j: JadwalUjian) =>
@@ -118,7 +111,7 @@ export default function SiswaDashboard() {
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, color: 'var(--color-text)' }}>{siswa.nama}</div>
             <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-              Kelas: {kelasMap[siswa.id_kelas] ?? '-'}
+              Kelas: {siswa.nama_kelas ?? '-'}
             </div>
           </div>
           <span className="badge badge-primary">Siswa</span>
@@ -143,27 +136,7 @@ export default function SiswaDashboard() {
                       <div>
                         <div style={{ fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.25rem' }}>
                           {ujian?.nama_ujian ?? 'Ujian'}
-      {/* Loading overlay saat reload */}
-      {isRefreshing && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          backgroundColor: 'rgba(0,0,0,0.45)',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: '1rem',
-        }}>
-          <div style={{
-            width: 48, height: 48,
-            border: '4px solid rgba(255,255,255,0.3)',
-            borderTopColor: '#fff',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-          }} />
-          <span style={{ color: '#fff', fontSize: '1.125rem', fontWeight: 600 }}>Sabar yaa!</span>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      )}
-    </div>
+                        </div>
                         <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{ujian?.jenis_ujian ?? '-'}</div>
                       </div>
                       <span className={statusBadgeClass(jadwal.status_publikasi)}>{jadwal.status_publikasi}</span>
@@ -208,6 +181,27 @@ export default function SiswaDashboard() {
           )}
         </section>
       </main>
+
+      {/* Loading overlay saat reload */}
+      {isRefreshing && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: '1rem',
+        }}>
+          <div style={{
+            width: 48, height: 48,
+            border: '4px solid rgba(255,255,255,0.3)',
+            borderTopColor: '#fff',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }} />
+          <span style={{ color: '#fff', fontSize: '1.125rem', fontWeight: 600 }}>Sabar yaa!</span>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
     </div>
   );
 }

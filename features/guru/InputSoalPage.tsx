@@ -4,10 +4,10 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { createSupabaseBrowserClient } from '@/lib/supabase';
 import type { Soal, Ujian } from '@/types';
 import AppTopbar from '@/components/AppTopbar';
 import Toast, { type ToastData } from '@/components/Toast';
+import { RichText, RichTextInput, RichTextInputLine } from '@/components/RichText';
 
 type OpsiKey = 'opsi_a' | 'opsi_b' | 'opsi_c' | 'opsi_d';
 type OpsiImgKey = 'opsi_a_img' | 'opsi_b_img' | 'opsi_c_img' | 'opsi_d_img';
@@ -159,10 +159,11 @@ export default function InputSoalPage() {
 
   function validateForm(): string {
     if (!form.pertanyaan.trim()) return 'Pertanyaan wajib diisi.';
-    if (!form.opsi_a.trim()) return 'Opsi A wajib diisi.';
-    if (!form.opsi_b.trim()) return 'Opsi B wajib diisi.';
-    if (!form.opsi_c.trim()) return 'Opsi C wajib diisi.';
-    if (!form.opsi_d.trim()) return 'Opsi D wajib diisi.';
+    // Setiap opsi valid jika ada teks ATAU ada gambar — minimal salah satu wajib ada
+    if (!form.opsi_a.trim() && !form.opsi_a_img.trim()) return 'Opsi A wajib diisi (teks atau gambar).';
+    if (!form.opsi_b.trim() && !form.opsi_b_img.trim()) return 'Opsi B wajib diisi (teks atau gambar).';
+    if (!form.opsi_c.trim() && !form.opsi_c_img.trim()) return 'Opsi C wajib diisi (teks atau gambar).';
+    if (!form.opsi_d.trim() && !form.opsi_d_img.trim()) return 'Opsi D wajib diisi (teks atau gambar).';
     return '';
   }
 
@@ -482,13 +483,11 @@ export default function InputSoalPage() {
             <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: 6 }}>
               Pertanyaan <span style={{ color: 'var(--color-danger)' }}>*</span>
             </label>
-            <textarea
-              className="form-input"
-              rows={3}
-              placeholder="Tulis pertanyaan di sini..."
+            <RichTextInput
               value={form.pertanyaan}
-              onChange={e => handleFormChange('pertanyaan', e.target.value)}
-              style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+              onChange={val => handleFormChange('pertanyaan', val)}
+              placeholder="Tulis pertanyaan di sini..."
+              rows={3}
             />
           </div>
 
@@ -530,20 +529,11 @@ export default function InputSoalPage() {
                         </span>
                       </label>
                       {/* Input teks opsi */}
-                      <input
-                        className="form-input"
-                        type="text"
-                        placeholder={`Opsi ${label}`}
+                      <RichTextInputLine
                         value={form[key]}
-                        onChange={e => handleFormChange(key, e.target.value)}
-                        style={{
-                          flex: 1,
-                          background: 'transparent',
-                          border: 'none',
-                          boxShadow: 'none',
-                          padding: '0',
-                          fontSize: '0.875rem',
-                        }}
+                        onChange={val => handleFormChange(key, val)}
+                        placeholder={form[imgKey] ? `Opsi ${label} (sudah ada gambar)` : `Opsi ${label} (teks atau upload gambar)`}
+                        style={{ flex: 1 }}
                       />
                       {isBenar && (
                         <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--color-success)', flexShrink: 0, marginTop: 2 }}>
@@ -712,7 +702,7 @@ export default function InputSoalPage() {
                       {idx + 1}
                     </span>
                     <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text)', lineHeight: 1.5 }}>
-                      {soal.pertanyaan}
+                      <RichText text={soal.pertanyaan} />
                     </p>
                   </div>
                   {/* Actions */}
@@ -798,7 +788,7 @@ export default function InputSoalPage() {
                             {label}
                           </span>
                           <span style={{ fontSize: '0.8125rem', color: 'var(--color-text)', lineHeight: 1.4 }}>
-                            {teks}
+                            <RichText text={teks} />
                           </span>
                           {isBenar && (
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-success)', marginLeft: 'auto', flexShrink: 0 }}>

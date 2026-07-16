@@ -1,20 +1,24 @@
 /**
  * Unit tests untuk app/api/jawaban/route.ts
  * Test: GET, POST
- * Catatan: route hanya punya GET dan POST — tidak ada PATCH
  */
 
 import { NextRequest } from 'next/server';
 
 jest.mock('@/lib/apiAuth', () => ({ getAuthUser: jest.fn() }));
-jest.mock('@/lib/supabase', () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock('@/lib/db', () => ({
+  query:    jest.fn(),
+  queryOne: jest.fn(),
+  execute:  jest.fn(),
+}));
 
 import { getAuthUser } from '@/lib/apiAuth';
-import { createSupabaseServerClient } from '@/lib/supabase';
+import { query, execute } from '@/lib/db';
 import { GET, POST } from '@/app/api/jawaban/route';
 
 const mockGetAuthUser = getAuthUser as jest.Mock;
-const mockCreateSupabase = createSupabaseServerClient as jest.Mock;
+const mockQuery       = query as jest.Mock;
+const mockExecute     = execute as jest.Mock;
 
 function makeReq(method: string, body?: object, search?: string) {
   const url = `http://localhost/api/jawaban${search ? '?' + search : ''}`;
@@ -42,12 +46,7 @@ describe('GET /api/jawaban', () => {
 
   test('returns 200 dengan array jawaban', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockResolvedValue({ data: [{ id: 'j1', jawaban_siswa: 'A' }], error: null }),
-      }),
-    });
+    mockQuery.mockResolvedValue([{ id: 'j1', jawaban_siswa: 'A' }]);
     const res = await GET(makeReq('GET', undefined, 'sessionId=ses1'));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -57,12 +56,7 @@ describe('GET /api/jawaban', () => {
 
   test('returns 200 dengan array kosong jika tidak ada jawaban', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockResolvedValue({ data: null, error: null }),
-      }),
-    });
+    mockQuery.mockResolvedValue([]);
     const res = await GET(makeReq('GET', undefined, 'sessionId=ses1'));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -71,12 +65,7 @@ describe('GET /api/jawaban', () => {
 
   test('returns 500 jika DB error', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockResolvedValue({ data: null, error: new Error('DB error') }),
-      }),
-    });
+    mockQuery.mockRejectedValue(new Error('DB error'));
     const res = await GET(makeReq('GET', undefined, 'sessionId=ses1'));
     expect(res.status).toBe(500);
   });
@@ -91,13 +80,9 @@ describe('POST /api/jawaban', () => {
 
   test('upsert jawaban berhasil — returns 200 {ok: true}', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        upsert: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
+    mockExecute.mockResolvedValue(1);
     const res = await POST(makeReq('POST', {
-      sessionId: 'ses1', soalId: 'q1', jawaban_siswa: 'A', status_soal: 'dijawab',
+      sessionId: 'ses1', soalId: 'q1', jawaban_siswa: 'A', status_soal: 'sudah',
     }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -106,24 +91,16 @@ describe('POST /api/jawaban', () => {
 
   test('upsert jawaban null (ragu-ragu) berhasil', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        upsert: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
+    mockExecute.mockResolvedValue(1);
     const res = await POST(makeReq('POST', {
       sessionId: 'ses1', soalId: 'q1', jawaban_siswa: null, status_soal: 'ragu',
     }));
     expect(res.status).toBe(200);
   });
 
-  test('returns 500 jika upsert DB error', async () => {
+  test('returns 500 jika DB error', async () => {
     mockGetAuthUser.mockResolvedValue({ id: 'u1', role: 'siswa' });
-    mockCreateSupabase.mockReturnValue({
-      from: jest.fn().mockReturnValue({
-        upsert: jest.fn().mockResolvedValue({ error: new Error('conflict') }),
-      }),
-    });
+    mockExecute.mockRejectedValue(new Error('conflict'));
     const res = await POST(makeReq('POST', {
       sessionId: 'ses1', soalId: 'q1', jawaban_siswa: 'B',
     }));

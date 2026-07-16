@@ -15,6 +15,7 @@ export default function ProktorHasilPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [jadwalList, setJadwalList] = useState<JadwalUjian[]>([]);
   const [ujianMap, setUjianMap] = useState<Record<string, Ujian>>({});
   const [selectedId, setSelectedId] = useState(searchParams.get('jadwal') ?? '');
@@ -25,6 +26,10 @@ export default function ProktorHasilPage() {
   const [kelasMap, setKelasMap] = useState<Record<string, string>>({});
   const [loadingNilai, setLoadingNilai] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterTingkat, setFilterTingkat] = useState('');
+  const [filterKelas, setFilterKelas] = useState('');
+  const [showKelasModal, setShowKelasModal] = useState(false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -95,7 +100,7 @@ export default function ProktorHasilPage() {
         No: i + 1,
         Kelas: kelas ?? '—',
         Nama: siswa?.nama ?? '—',
-        Nilai: n.nilai,
+        Nilai: parseFloat(String(n.nilai)),
         Benar: n.jumlah_benar,
         Salah: n.jumlah_salah,
         Status: n.lulus ? 'LULUS' : 'TIDAK LULUS',
@@ -118,10 +123,17 @@ export default function ProktorHasilPage() {
   const selectedJadwal = jadwalList.find(j => j.id === selectedId);
   const selectedUjian = selectedJadwal ? ujianMap[selectedJadwal.id_ujian] : null;
 
+  // Derive tingkat & abjad dari nilaiData
+  const allKelasNames = nilaiData.map(n => kelasMap[siswaMap[n.id_siswa]?.id_kelas ?? ''] ?? '').filter(Boolean);
+  const tingkatList = Array.from(new Set(allKelasNames.map(k => k.match(/^\d+/)?.[0] ?? ''))).filter(Boolean).sort();
+  const abjadList = filterTingkat
+    ? Array.from(new Set(allKelasNames.filter(k => k.startsWith(filterTingkat)).map(k => k.replace(/^\d+/, '').trim()))).filter(Boolean).sort()
+    : [];
+
   const totalPeserta = nilaiData.length;
   const lulus = nilaiData.filter(n => n.lulus).length;
   const tidakLulus = totalPeserta - lulus;
-  const rataRata = totalPeserta > 0 ? (nilaiData.reduce((sum, n) => sum + n.nilai, 0) / totalPeserta).toFixed(2) : '0.00';
+  const rataRata = totalPeserta > 0 ? (nilaiData.reduce((sum, n) => sum + parseFloat(String(n.nilai)), 0) / totalPeserta).toFixed(2) : '0.00';
 
   function handleSort(key: 'kelas' | 'nama' | 'nilai') {
     if (sortKey === key) setSortAsc(p => !p);
@@ -131,25 +143,35 @@ export default function ProktorHasilPage() {
     if (sortKey !== key) return ' ↕';
     return sortAsc ? ' ↑' : ' ↓';
   }
-  function sortedNilai() {
-    return [...nilaiData].sort((a, b) => {
-      const sa = siswaMap[a.id_siswa];
-      const sb = siswaMap[b.id_siswa];
-      let va = '', vb = '';
-      if (sortKey === 'kelas') { va = kelasMap[sa?.id_kelas ?? ''] ?? ''; vb = kelasMap[sb?.id_kelas ?? ''] ?? ''; }
-      else if (sortKey === 'nama') { va = sa?.nama ?? ''; vb = sb?.nama ?? ''; }
-      else if (sortKey === 'nilai') { return sortAsc ? a.nilai - b.nilai : b.nilai - a.nilai; }
-      return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
-    });
+  function displayedNilai() {
+    return [...nilaiData]
+      .filter(n => {
+        const siswa = siswaMap[n.id_siswa];
+        const namaKelas = siswa ? (kelasMap[siswa.id_kelas] ?? '') : '';
+        const q = search.toLowerCase();
+        const matchSearch = !q || (siswa?.nama ?? '').toLowerCase().includes(q) || namaKelas.toLowerCase().includes(q);
+        const matchTingkat = !filterTingkat || namaKelas.startsWith(filterTingkat);
+        const matchKelas = !filterKelas || namaKelas === `${filterTingkat}${filterKelas}`;
+        return matchSearch && matchTingkat && matchKelas;
+      })
+      .sort((a, b) => {
+        const sa = siswaMap[a.id_siswa];
+        const sb = siswaMap[b.id_siswa];
+        let va = '', vb = '';
+        if (sortKey === 'kelas') { va = kelasMap[sa?.id_kelas ?? ''] ?? ''; vb = kelasMap[sb?.id_kelas ?? ''] ?? ''; }
+        else if (sortKey === 'nama') { va = sa?.nama ?? ''; vb = sb?.nama ?? ''; }
+        else if (sortKey === 'nilai') { return sortAsc ? parseFloat(String(a.nilai)) - parseFloat(String(b.nilai)) : parseFloat(String(b.nilai)) - parseFloat(String(a.nilai)); }
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
   }
 
   if (isLoading || !user) return null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <AppTopbar pageLabel="Hasil Ujian" />
+      <AppTopbar pageLabel="Hasil Ujian" onMenuClick={() => setSidebarOpen(true)} />
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
         <div style={{
@@ -222,6 +244,43 @@ export default function ProktorHasilPage() {
                 ))}
               </div>
 
+              {/* Search & Filter */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="🔍 Cari nama atau kelas..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ flex: 1, minWidth: 200 }}
+                />
+                <button
+                  onClick={() => setShowKelasModal(true)}
+                  style={{
+                    padding: '0.5rem 0.875rem', borderRadius: '0.5rem',
+                    border: `2px solid ${filterTingkat ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                    background: filterTingkat ? 'var(--color-primary)' : 'var(--color-surface)',
+                    color: filterTingkat ? '#fff' : 'var(--color-text)',
+                    fontSize: '0.875rem', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {filterTingkat
+                    ? filterKelas ? `Kelas ${filterTingkat}${filterKelas}` : `Tingkat ${filterTingkat}`
+                    : '🏫 Filter Kelas'}
+                </button>
+                {(search || filterTingkat) && (
+                  <button
+                    onClick={() => { setSearch(''); setFilterTingkat(''); setFilterKelas(''); }}
+                    style={{
+                      padding: '0.5rem 0.875rem', borderRadius: '0.5rem',
+                      border: '2px solid var(--color-border)',
+                      background: 'var(--color-surface)', color: 'var(--color-text-muted)',
+                      fontSize: '0.875rem', cursor: 'pointer',
+                    }}
+                  >✕ Reset</button>
+                )}
+              </div>
+
               {/* Tabel */}
               <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
@@ -239,19 +298,25 @@ export default function ProktorHasilPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedNilai().map((n, idx) => {
-                        const siswa = siswaMap[n.id_siswa];
-                        const namaKelas = siswa ? kelasMap[siswa.id_kelas] : undefined;
-                        return (
-                          <tr key={n.id} style={{ borderBottom: idx < sortedNilai().length - 1 ? '1px solid var(--color-border)' : 'none' }}>
-                            <td style={{ padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{namaKelas ?? '—'}</td>
-                            <td style={{ padding: '0.75rem 0.875rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{siswa?.nama ?? '—'}</td>
-                            <td style={{ padding: '0.75rem 0.875rem', fontSize: '1rem', fontWeight: 800, color: n.lulus ? 'var(--color-success)' : 'var(--color-danger)' }}>{n.nilai.toFixed(0)}</td>
-                            <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-success)' }}>{n.jumlah_benar}</td>
-                            <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-danger)' }}>{n.jumlah_salah}</td>
-                          </tr>
+                      {(() => {
+                        const rows = displayedNilai();
+                        if (rows.length === 0) return (
+                          <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Tidak ada data yang cocok.</td></tr>
                         );
-                      })}
+                        return rows.map((n, idx) => {
+                          const siswa = siswaMap[n.id_siswa];
+                          const namaKelas = siswa ? kelasMap[siswa.id_kelas] : undefined;
+                          return (
+                            <tr key={n.id} style={{ borderBottom: idx < rows.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
+                              <td style={{ padding: '0.75rem 0.875rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{namaKelas ?? '—'}</td>
+                              <td style={{ padding: '0.75rem 0.875rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{siswa?.nama ?? '—'}</td>
+                              <td style={{ padding: '0.75rem 0.875rem', fontSize: '1rem', fontWeight: 800, color: n.lulus ? 'var(--color-success)' : 'var(--color-danger)' }}>{parseFloat(String(n.nilai)).toFixed(0)}</td>
+                              <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-success)' }}>{n.jumlah_benar}</td>
+                              <td style={{ padding: '0.75rem 0.875rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-danger)' }}>{n.jumlah_salah}</td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -262,6 +327,94 @@ export default function ProktorHasilPage() {
       </main>
       </div>
       <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {/* Modal Pilih Kelas */}
+      {showKelasModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400 }}
+          onClick={() => setShowKelasModal(false)}
+        >
+          <div
+            style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 400, boxShadow: 'var(--shadow-xl)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text)' }}>
+                {filterTingkat ? `Pilih Kelas Tingkat ${filterTingkat}` : 'Pilih Tingkat'}
+              </span>
+              <button
+                onClick={() => setShowKelasModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)', lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            {!filterTingkat ? (
+              <>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>Pilih tingkat kelas:</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem' }}>
+                  {tingkatList.map(t => (
+                    <button
+                      key={t}
+                      onClick={() => { setFilterTingkat(t); setFilterKelas(''); }}
+                      style={{
+                        padding: '0.625rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer',
+                        border: '2px solid var(--color-border)', fontWeight: 700, fontSize: '1.125rem',
+                        background: 'var(--color-surface-alt)', color: 'var(--color-text)',
+                        minWidth: 60, textAlign: 'center',
+                      }}
+                    >{t}</button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+                  Pilih kelas atau lihat semua tingkat {filterTingkat}:
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.625rem', marginBottom: '1rem' }}>
+                  <button
+                    onClick={() => { setFilterKelas(''); setShowKelasModal(false); }}
+                    style={{
+                      padding: '0.625rem 1rem', borderRadius: '0.5rem', cursor: 'pointer',
+                      border: `2px solid ${!filterKelas ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      fontWeight: 700, fontSize: '0.9375rem',
+                      background: !filterKelas ? 'var(--color-primary)' : 'var(--color-surface-alt)',
+                      color: !filterKelas ? '#fff' : 'var(--color-text)',
+                    }}
+                  >Semua {filterTingkat}</button>
+                  {abjadList.map(a => (
+                    <button
+                      key={a}
+                      onClick={() => { setFilterKelas(a); setShowKelasModal(false); }}
+                      style={{
+                        padding: '0.625rem 1rem', borderRadius: '0.5rem', cursor: 'pointer',
+                        border: `2px solid ${filterKelas === a ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                        fontWeight: 700, fontSize: '0.9375rem',
+                        background: filterKelas === a ? 'var(--color-primary)' : 'var(--color-surface-alt)',
+                        color: filterKelas === a ? '#fff' : 'var(--color-text)',
+                        minWidth: 52, textAlign: 'center',
+                      }}
+                    >{filterTingkat}{a}</button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setFilterTingkat('')}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--color-text-muted)', padding: 0 }}
+                >← Kembali ke pilih tingkat</button>
+              </>
+            )}
+
+            <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+              {(filterTingkat || filterKelas) && (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => { setFilterTingkat(''); setFilterKelas(''); setShowKelasModal(false); }}
+                >Reset Filter</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

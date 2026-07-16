@@ -24,6 +24,7 @@ export default function ProktorJadwalPage() {
   const { user, isLoading } = useAuth();
   const router   = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mode, setMode]         = useState<Mode>('list');
   const [jadwalList, setJadwalList] = useState<JadwalUjian[]>([]);
   const [ujianMap, setUjianMap] = useState<Record<string, Ujian>>({});
@@ -151,10 +152,12 @@ export default function ProktorJadwalPage() {
     setOpenMenu(null);
     confirm('Publish jadwal ini? Ujian akan tampil di dashboard siswa.', async () => {
       try {
+        // Sync semua siswa ke jadwal saat publish, agar semua siswa bisa melihat ujian
+        const allSiswaIds = siswaList.map(sw => sw.id);
         const res = await fetch(`/api/jadwal/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status_publikasi: 'Published' }),
+          body: JSON.stringify({ status_publikasi: 'Published', siswa_ids: allSiswaIds }),
         });
         if (!res.ok) { setToast({ msg: 'Gagal mempublish jadwal.', type: 'error' }); return; }
         setToast({ msg: 'Jadwal berhasil dipublish.', type: 'success' });
@@ -233,9 +236,9 @@ export default function ProktorJadwalPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
-      <AppTopbar pageLabel="Kelola Jadwal" />
+      <AppTopbar pageLabel="Kelola Jadwal" onMenuClick={() => setSidebarOpen(true)} />
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
         <div style={{ padding: '1.25rem 1.5rem', borderBottom: '2px solid var(--color-border)', background: 'var(--color-surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
@@ -401,7 +404,7 @@ export default function ProktorJadwalPage() {
       {/* Confirm dialog */}
       {confirmMsg && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-          <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 360 }}>
+          <div style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', borderRadius: '0.75rem', padding: '1.5rem', width: 'min(360px, calc(100vw - 2rem))' }}>
             <p style={{ margin: '0 0 1.25rem', fontSize: '0.9375rem', color: 'var(--color-text)', lineHeight: 1.5 }}>{confirmMsg}</p>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => { setConfirmMsg(''); setConfirmAction(null); }}>Batal</button>

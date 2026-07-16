@@ -12,6 +12,7 @@ export default function ProktorDashboard() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [jadwalList, setJadwalList] = useState<JadwalUjian[]>([]);
   const [ujianMap, setUjianMap] = useState<Record<string, Ujian>>({});
 
@@ -138,11 +139,11 @@ export default function ProktorDashboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', backgroundColor: 'var(--color-bg)' }}>
       {/* ── Full-width topbar ── */}
-      <AppTopbar pageLabel="Dashboard" />
+      <AppTopbar pageLabel="Dashboard" onMenuClick={() => setSidebarOpen(true)} />
 
       {/* ── Sidebar + content row ── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} />
+        <ProktorSidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(p => !p)} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
 

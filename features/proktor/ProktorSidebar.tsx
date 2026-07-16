@@ -62,45 +62,55 @@ const NAV_ITEMS = [
 interface ProktorSidebarProps {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Mobile drawer: apakah drawer terbuka */
+  isOpen?: boolean;
+  /** Mobile drawer: callback untuk menutup drawer */
+  onClose?: () => void;
 }
 
-export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorSidebarProps) {
+/** Isi navigasi sidebar — dipakai di desktop sidebar maupun mobile drawer */
+function SidebarContent({
+  collapsed = false,
+  onToggle,
+  onClose,
+}: {
+  collapsed?: boolean;
+  onToggle?: () => void;
+  onClose?: () => void;
+}) {
   const pathname = usePathname();
   const { user } = useAuth();
-
-  const W = collapsed ? 56 : 240;
   const initial = user?.nama?.charAt(0)?.toUpperCase() ?? 'P';
 
   return (
-    <aside
-      aria-label="Navigasi utama"
-      style={{
-        width: W, minWidth: W, maxWidth: W,
-        height: 'calc(100dvh - 56px)',
-        position: 'sticky',
-        top: 56,
-        background: 'var(--color-surface)',
-        borderRight: '1px solid var(--color-border)',
-        display: 'flex',
-        flexDirection: 'column',
-        transition: 'width 0.2s ease, min-width 0.2s ease, max-width 0.2s ease',
-        overflow: 'hidden',
-        zIndex: 40,
-      }}
-    >
-      {/* ── Toggle button row ── */}
+    <>
+      {/* ── Toggle / Close button row ── */}
       <div style={{
         height: 40,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'flex-end',
-        padding: collapsed ? 0 : '0 10px',
+        justifyContent: onClose ? 'space-between' : (collapsed ? 'center' : 'flex-end'),
+        padding: collapsed && !onClose ? 0 : '0 10px',
         flexShrink: 0,
       }}>
+        {/* Label "Menu" di mobile drawer */}
+        {onClose && (
+          <span style={{
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            color: 'var(--color-text-subtle)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}>
+            Menu
+          </span>
+        )}
+
+        {/* Close button (mobile) atau collapse toggle (desktop) */}
         <button
-          onClick={onToggle}
-          title={collapsed ? 'Buka sidebar' : 'Ciutkan sidebar'}
-          aria-label={collapsed ? 'Buka sidebar' : 'Ciutkan sidebar'}
+          onClick={onClose ?? onToggle}
+          title={onClose ? 'Tutup menu' : (collapsed ? 'Buka sidebar' : 'Ciutkan sidebar')}
+          aria-label={onClose ? 'Tutup menu navigasi' : (collapsed ? 'Buka sidebar' : 'Ciutkan sidebar')}
           style={{
             width: 26, height: 26,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -121,7 +131,13 @@ export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorS
             (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-subtle)';
           }}
         >
-          {collapsed ? (
+          {onClose ? (
+            /* X icon untuk close drawer */
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          ) : collapsed ? (
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9,18 15,12 9,6"/>
             </svg>
@@ -133,41 +149,23 @@ export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorS
         </button>
       </div>
 
-      {/* ── Section label ── */}
-      {!collapsed && (
-        <div style={{
-          padding: '8px 16px 4px',
-          fontSize: '0.625rem',
-          fontWeight: 700,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: 'var(--color-text-subtle)',
-          flexShrink: 0,
-        }}>
-          Menu
-        </div>
-      )}
-
-      {/* ── Navigation ── */}
-      <nav
-        role="navigation"
-        aria-label="Menu proktor"
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 8px' }}
-      >
+      {/* ── Nav items ── */}
+      <nav style={{ flex: 1, padding: '4px 8px', overflowY: 'auto' }}>
         {NAV_ITEMS.map(item => {
           const active = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
             <Link
               key={item.href}
               href={item.href}
-              title={collapsed ? item.label : undefined}
+              onClick={onClose}
+              title={collapsed && !onClose ? item.label : undefined}
               aria-current={active ? 'page' : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: collapsed ? '10px 0' : '9px 12px',
-                justifyContent: collapsed ? 'center' : 'flex-start',
+                padding: collapsed && !onClose ? '10px 0' : '9px 12px',
+                justifyContent: collapsed && !onClose ? 'center' : 'flex-start',
                 borderRadius: 8,
                 textDecoration: 'none',
                 marginBottom: 2,
@@ -178,7 +176,7 @@ export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorS
                 transition: 'background 0.12s, color 0.12s, transform 0.1s',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                borderLeft: active && !collapsed ? '2px solid var(--color-primary)' : '2px solid transparent',
+                borderLeft: active && (!collapsed || onClose) ? '2px solid var(--color-primary)' : '2px solid transparent',
               }}
               onMouseEnter={e => {
                 if (!active) {
@@ -201,7 +199,7 @@ export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorS
               }}>
                 {item.icon}
               </span>
-              {!collapsed && (
+              {(!collapsed || onClose) && (
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {item.label}
                 </span>
@@ -214,10 +212,10 @@ export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorS
       {/* ── User profile card at bottom ── */}
       <div style={{
         borderTop: '1px solid var(--color-border)',
-        padding: collapsed ? '12px 8px' : '12px',
+        padding: collapsed && !onClose ? '12px 8px' : '12px',
         flexShrink: 0,
       }}>
-        {collapsed ? (
+        {collapsed && !onClose ? (
           /* Collapsed: just avatar */
           <div style={{
             width: 32, height: 32,
@@ -291,6 +289,55 @@ export default function ProktorSidebar({ collapsed = false, onToggle }: ProktorS
           </div>
         )}
       </div>
-    </aside>
+    </>
+  );
+}
+
+export default function ProktorSidebar({ collapsed = false, onToggle, isOpen = false, onClose }: ProktorSidebarProps) {
+  const W = collapsed ? 56 : 240;
+
+  return (
+    <>
+      {/* ── Desktop sidebar (sticky, tersembunyi di mobile via CSS) ── */}
+      <aside
+        aria-label="Navigasi utama"
+        className="sidebar-desktop"
+        style={{
+          width: W, minWidth: W, maxWidth: W,
+          height: 'calc(100dvh - 56px)',
+          position: 'sticky',
+          top: 56,
+          background: 'var(--color-surface)',
+          borderRight: '1px solid var(--color-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          transition: 'width 0.2s ease, min-width 0.2s ease, max-width 0.2s ease',
+          overflow: 'hidden',
+          zIndex: 40,
+        }}
+        // Sembunyikan di mobile via inline media — komponen tidak punya akses CSS class di sini,
+        // tapi karena sidebar-layout sudah menjadi 1 kolom di mobile, aside ini tidak akan ditampilkan
+        // (ia tidak memiliki posisi di grid). Kita tetap render tapi sembunyikan lewat CSS class di wrapper.
+      >
+        <SidebarContent collapsed={collapsed} onToggle={onToggle} />
+      </aside>
+
+      {/* ── Mobile: overlay backdrop ── */}
+      <div
+        className={`sidebar-overlay${isOpen ? ' open' : ''}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* ── Mobile: slide-in drawer ── */}
+      <div
+        className={`sidebar-drawer${isOpen ? ' open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigasi utama"
+      >
+        <SidebarContent onClose={onClose} />
+      </div>
+    </>
   );
 }
